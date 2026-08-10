@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>word ladder — tests</title>
+<style>
+  :root { --paper:#faf7f2; --ink:#1a1a1a; --muted:#6b6257; --accent:#a3341f; --good:#1f6b3a; --rule:#d9d2c7; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 18px 64px;
+    background: var(--paper); color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; }
+  h1 { font-size: 0.95rem; font-weight: 600; letter-spacing: 0.3em; text-transform: uppercase; margin: 0; }
+  .sub { color: var(--muted); font-size: 0.85rem; margin: 6px 0 0; }
+  #score { font-size: 1.6rem; font-weight: 600; margin: 20px 0 4px; }
+  #score.pass { color: var(--good); }
+  #score.fail { color: var(--accent); }
+  #note { color: var(--muted); font-size: 0.85rem; margin: 0 0 18px; }
+  h2 { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase;
+       color: var(--muted); margin: 26px 0 8px; border-bottom: 1px solid var(--rule); padding-bottom: 6px; }
+  .row { display: flex; gap: 10px; padding: 3px 0; align-items: baseline; }
+  .tick { flex: 0 0 4.2rem; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; }
+  .PASS .tick { color: var(--good); }
+  .FAIL .tick { color: var(--accent); }
+  .SKIP .tick { color: var(--muted); }
+  .FAIL .name { color: var(--accent); }
+  .name { flex: 1 1 auto; }
+  .detail { color: var(--muted); font-size: 0.82rem; }
+  #stage { position: absolute; left: -10000px; top: 0; width: 390px; height: 844px; }
+  #stage iframe { width: 390px; height: 844px; border: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>word ladder — tests</h1>
+  <p class="sub">Drives the real <code>index.html</code> in an iframe. Browsers sandbox
+     <code>file://</code> iframes, so serve the folder (<code>python3 -m http.server</code>)
+     and open this page over http.</p>
+  <p id="score">running…</p>
+  <p id="note"></p>
+  <div id="out"></div>
+</div>
+<div id="stage"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var out = document.getElementById("out");
+  var pass = 0, fail = 0, skip = 0, failures = [];
+
+  function group(title) {
+    var h = document.createElement("h2");
+    h.textContent = title;
+    out.appendChild(h);
+  }
+  function row(state, name, detail) {
+    var d = document.createElement("div");
+    d.className = "row " + state;
+    var t = document.createElement("span"); t.className = "tick"; t.textContent = state;
+    var n = document.createElement("span"); n.className = "name"; n.textContent = name;
+    d.appendChild(t); d.appendChild(n);
+    if (detail) { var e = document.createElement("span"); e.className = "detail"; e.textContent = detail; d.appendChild(e); }
+    out.appendChild(d);
+  }
+  function ok(name, cond, detail) {
+    if (cond) { pass++; row("PASS", name, detail); }
+    else { fail++; failures.push(name + (detail ? " — " + detail : "")); row("FAIL", name, detail); }
+    return !!cond;
+  }
+  function skipped(name, why) { skip++; row("SKIP", name, why); }
+
+  /* ------------------------- iframe harness ------------------------- */
+
+  var KEY = "word-ladder.v1";
+  var stage = document.getElementById("stage");
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) { saved = null; }
+
+  function seed(blob) {
+    try {
+      if (blob === null) localStorage.removeItem(KEY);
+      else localStorage.setItem(KEY, blob);
+    } catch (e) { /* ignore */ }
+  }
+  function stored() {
+    try { return localStorage.getItem(KEY); } catch (e) { return null; }
+  }
+
+  function openApp(query, w, h) {
+    return new Promise(function (resolve, reject) {
+      var f = document.createElement("iframe");
+      if (w) { f.style.width = w + "px"; f.style.height = h + "px"; }
+      f.addEventListener("load", function () {
+        var win, doc;
+        try { win = f.contentWindow; doc = win.document; win.location.href; }
+        catch (e) { reject(new Error("sandboxed")); return; }
+        var errors = [];
+        try {
+          win.addEventListener("error", function (ev) { errors.push("error: " + ev.message); });
+          win.addEventListener("unhandledrejection", function () { errors.push("unhandledrejection"); });
+          var ce = win.console.error;
+          win.console.error = function () { errors.push("console.error"); ce.apply(win.console, arguments); };
+        } catch (e) { reject(new Error("sandboxed")); return; }
+        resolve({ frame: f, win: win, doc: doc, errors: errors, WL: win.WL,
+                  close: function () { if (f.parentNode) f.parentNode.removeChild(f); } });
+      });
+      f.addEventListener("error", function () { reject(new Error("iframe failed to load")); });
+      f.src = "index.html" + (query || "");
+      stage.appendChild(f);
+    });
+  }
+
+  function $(app, id) { return app.doc.getElementById(id); }
+  function msgOf(app) { return $(app, "msg").textContent; }
+  function chainWords(app) {
+    var kids = $(app, "chain").children, a = [], i;
+    for (i = 0; i < kids.length; i++) a.push(kids[i].getAttribute("aria-label"));
+    return a;
+  }
+  function type(app, text) {
+    var inp = $(app, "word");
+    inp.value = text;
+    inp.dispatchEvent(new app.win.Event("input", { bubbles: true }));
+  }
+  function submit(app) { $(app, "submit").click(); }
+  function play(app, text) { type(app, text); submit(app); }
+  function undoAll(app) {
+    var u = $(app, "undo"), guard = 0;
+    while (!u.disabled && guard++ < 50) u.click();
+  }
+  function selected(app) {
+    var inp = $(app, "word");
+    return inp.value.length > 0 && inp.selectionStart === 0 && inp.selectionEnd === inp.value.length;
+  }
+
+  /* ------------------------------ tests ----------------------------- */
+
+  function sourceChecks() {
+    group("source integrity of index.html");
+    return fetch("index.html").then(function (r) { return r.text(); }).then(function (src) {
+      ok("index.html contains no Math.random", src.indexOf("Math." + "random") === -1);
+      var nonUTC = src.match(/(?<!UTC)get(?:FullYear|Month|Date|Day|Hours|Minutes)\s*\(/g);
+      ok("index.html calls no local-time date getters", !nonUTC, nonUTC ? nonUTC.join(" ") : "getUTC* only");
+      ok("index.html never touches innerHTML", src.indexOf("inner" + "HTML") === -1);
+      ok("index.html makes no network calls", src.indexOf("fetch(") === -1 &&
+         src.indexOf("XMLHttpRequest") === -1 && src.indexOf("EventSource") === -1);
+      ok("index.html loads no external asset", src.indexOf("http://") === -1 &&
+         src.indexOf("https://") === -1 && !/<script[^>]+src=/i.test(src) && !/<link[^>]+stylesheet/i.test(src));
+      ok("index.html uses the storage key word-ladder.v1", src.indexOf('"word-ladder.v1"') !== -1);
+    }, function () {
+      ["contains no Math.random", "calls no local-time date getters", "never touches innerHTML",
+       "makes no network calls", "loads no external asset", "uses the storage key word-ladder.v1"]
+        .forEach(function (n) { skipped("index.html " + n, "source unreadable from file:// — serve over http"); });
+    });
+  }
+
+  function listAndPuzzles(app) {
+    var WL = app.WL, W = WL.WORDS, i, bad;
+
+    group("word list integrity");
+    ok("word list has at least 500 entries", W.length >= 500, W.length + " entries");
+    bad = W.filter(function (w) { return !/^[a-z]{4}$/.test(w); });
+    ok("every entry matches /^[a-z]{4}$/", bad.length === 0, bad.slice(0, 5).join(" "));
+    var uniq = {}, dupes = [];
+    for (i = 0; i < W.length; i++) { if (uniq[W[i]]) dupes.push(W[i]); uniq[W[i]] = 1; }
+    ok("no duplicate entries", dupes.length === 0, dupes.slice(0, 5).join(" "));
+    var unsorted = [];
+    for (i = 1; i < W.length; i++) if (W[i - 1] >= W[i]) unsorted.push(W[i - 1] + ">" + W[i]);
+    ok("list is sorted ascending", unsorted.length === 0, unsorted.slice(0, 3).join(" "));
+    var frac = WL.COMP.length / W.length;
+    ok("largest connected component holds at least 60% of entries", frac >= 0.6,
+       WL.COMP.length + "/" + W.length + " = " + (frac * 100).toFixed(1) + "%");
+
+    // 30 consecutive dates, starting the day before today so today is included.
+    var dates = [], base = WL.shiftDays(WL.today, -1);
+    for (i = 0; i < 30; i++) dates.push(WL.shiftDays(base, i));
+
+    group("determinism — 30 consecutive dates");
+    var drift = [];
+    dates.forEach(function (d) {
+      var a = WL.puzzleFor(d), b = WL.puzzleFor(d), c = WL.puzzleFor(d);
+      var k = function (p) { return p.start + ">" + p.target + ":" + p.par; };
+      if (!(k(a) === k(b) && k(b) === k(c))) drift.push(d);
+    });
+    ok("three independent runs agree on {start, target, par} for all 30 dates",
+       drift.length === 0, drift.join(" ") || dates[0] + " … " + dates[29]);
+    ok("the rendered header shows today's UTC date",
+       $(app, "date").textContent === "Puzzle for " + WL.utcDateStr(new Date()) + " · UTC",
+       $(app, "date").textContent);
+    ok("the puzzle is a function of the date string alone (leading/trailing dates differ)",
+       WL.puzzleFor(dates[0]).start !== WL.puzzleFor(dates[1]).start ||
+       WL.puzzleFor(dates[0]).target !== WL.puzzleFor(dates[1]).target);
+    var seedA = WL.fnv1a32("word-ladder:2026-08-10");
+    ok("fnv1a32 is stable and 32-bit unsigned", seedA === WL.fnv1a32("word-ladder:2026-08-10") &&
+       seedA >= 0 && seedA <= 4294967295 && Math.floor(seedA) === seedA, "seed " + seedA);
+
+    group("solvability — the BFS path is walked, not trusted");
+    var badWalk = [], badPar = [], notMember = [], hows = {};
+    var set = {}; for (i = 0; i < W.length; i++) set[W[i]] = 1;
+    var comp = {}; for (i = 0; i < WL.COMP.length; i++) comp[WL.COMP[i]] = 1;
+    dates.forEach(function (d) {
+      var p = WL.puzzleFor(d);
+      hows[p.how] = (hows[p.how] || 0) + 1;
+      if (!p) { badWalk.push(d + ":none"); return; }
+      if (!comp[p.start] || !comp[p.target] ||
+          WL.NBR[p.start].length < 2 || WL.NBR[p.target].length < 2) notMember.push(d);
+      var path = WL.pathOf(p);
+      if (!path || path[0] !== p.start || path[path.length - 1] !== p.target) { badWalk.push(d + ":ends"); return; }
+      if (path.length - 1 !== p.par) { badWalk.push(d + ":length"); return; }
+      for (var j = 0; j < path.length; j++) {
+        if (!set[path[j]]) { badWalk.push(d + ":" + path[j] + " not in list"); return; }
+        if (j && WL.diffCount(path[j], path[j - 1]) !== 1) { badWalk.push(d + ":" + path[j - 1] + "->" + path[j]); return; }
+      }
+      var lo = p.how === "distance 3-5" ? 3 : 2, hi = p.how === "distance 3-5" ? 5 : 6;
+      if (p.par < lo || p.par > hi) badPar.push(d + ":" + p.par + " (" + p.how + ")");
+    });
+    ok("every date's parent chain is a legal ladder ending at the target",
+       badWalk.length === 0, badWalk.slice(0, 3).join(" ") || "30/30 walked");
+    ok("every par is inside the band its generation branch promises",
+       badPar.length === 0, badPar.slice(0, 3).join(" ") || Object.keys(hows).map(function (k) {
+         return k + " x" + hows[k]; }).join(", "));
+    ok("every start and target is in the largest component with degree >= 2",
+       notMember.length === 0, notMember.slice(0, 3).join(" ") || "30/30");
+    ok("today's puzzle is solvable in exactly the par shown",
+       (function () {
+         var p = WL.puzzle, path = WL.pathOf(p);
+         return path && path.length - 1 === p.par &&
+                $(app, "status").textContent === "shortest: " + p.par + " moves";
+       }()), WL.puzzle.start.toUpperCase() + " -> " + WL.puzzle.target.toUpperCase() +
+             ", par " + WL.puzzle.par);
+
+    group("layout at phone width");
+    ok("no horizontal scroll at 390x844",
+       app.doc.documentElement.scrollWidth <= app.doc.documentElement.clientWidth,
+       app.doc.documentElement.scrollWidth + " <= " + app.doc.documentElement.clientWidth);
+    var small = ["word", "submit", "undo"].filter(function (id) {
+      var r = $(app, id).getBoundingClientRect();
+      return r.width < 44 || r.height < 44;
+    });
+    ok("input, Submit and Undo are all at least 44x44 CSS px at 390 wide",
+       small.length === 0, small.join(" ") || ["word", "submit", "undo"].map(function (id) {
+         var r = $(app, id).getBoundingClientRect();
+         return id + " " + Math.round(r.width) + "x" + Math.round(r.height);
+       }).join(", "));
+    ok("DOM order is input then Submit then Undo, with nothing focusable between",
+       (function () {
+         var f = app.doc.querySelectorAll("input, button, a[href], select, textarea, [tabindex]");
+         return f.length === 3 && f[0].id === "word" && f[1].id === "submit" && f[2].id === "undo";
+       }()));
+  }
+
+  function inputMatrix() {
+    group("input handling — garbage in, and the right thing out");
+    // ?d= keeps the whole matrix read-only: nothing here can touch a real streak.
+    var date = "2026-08-10";
+    return openApp("?d=" + date, 390, 844).then(function (app) {
+      var WL = app.WL, path = WL.pathOf(WL.puzzle).map(function (w) { return w.toUpperCase(); });
+      var START = path[0], NEXT = path[1], TARGET = path[path.length - 1];
+      var twoAway = null, i;
+      for (i = 0; i < WL.WORDS.length; i++) {
+        if (WL.diffCount(WL.WORDS[i].toUpperCase(), START) === 2) { twoAway = WL.WORDS[i].toUpperCase(); break; }
+      }
+
+      // --- rejections and no-ops: the chain must not grow ---
+      ok("empty submit is a silent no-op",
+         (function () { var m = msgOf(app); play(app, ""); return chainWords(app).length === 1 && msgOf(app) === m; }()));
+      undoAll(app);
+      ok("four spaces leave the field empty and the chain alone",
+         (function () { play(app, "    "); return $(app, "word").value === "" && chainWords(app).length === 1; }()));
+      ok("ZZZZ is refused by name", (function () { play(app, "ZZZZ"); return msgOf(app) === "ZZZZ isn't in the list"; }()),
+         msgOf(app));
+      ok("a refused word stays in the field and is selected", selected(app), $(app, "word").value);
+      ok("three letters ask for four",
+         (function () { play(app, START.slice(0, 3)); return msgOf(app) === "four letters"; }()), msgOf(app));
+      ok("repeating the word above is named as such",
+         (function () { play(app, START); return msgOf(app) === "that's the same word"; }()), msgOf(app));
+      ok("a two-letter jump is refused",
+         (function () { play(app, twoAway); return msgOf(app) === "change exactly one letter"; }()),
+         twoAway + " -> " + msgOf(app));
+      ok("digits alone leave the field empty",
+         (function () { play(app, "1234"); return $(app, "word").value === "" && chainWords(app).length === 1; }()));
+      ok("emoji leave the field empty",
+         (function () { play(app, "😀🚀"); return $(app, "word").value === "" && chainWords(app).length === 1; }()));
+      var blob = "";
+      for (i = 0; i < 500; i++) blob += "aB3! 😀é-中";
+      type(app, blob);
+      ok("a 5,000-character pasted blob leaves at most four letters in the field",
+         $(app, "word").value.length <= 4 && /^[A-Z]*$/.test($(app, "word").value),
+         blob.length + " chars in, " + JSON.stringify($(app, "word").value) + " out");
+      submit(app);
+      ok("the blob does not grow the chain", chainWords(app).length === 1);
+      play(app, "<script>alert(1)</" + "script>");
+      ok("pasted markup is stripped to letters and never parsed",
+         $(app, "word").value.length <= 4 && app.doc.querySelectorAll("script").length === 1,
+         JSON.stringify($(app, "word").value));
+      ok("exactly one message is visible at a time", app.doc.querySelectorAll("#msg").length === 1 &&
+         msgOf(app).indexOf("\n") === -1 && $(app, "msg").getAttribute("aria-live") === "polite");
+      ok("nothing above refused a rung", chainWords(app).length === 1, chainWords(app).join(" "));
+
+      // --- positive rows: the right thing has to happen too ---
+      $(app, "word").value = "";
+      ok("a legal one-letter change is appended and announced",
+         (function () { play(app, NEXT); return chainWords(app).join(" ") === START + " " + NEXT &&
+                                                  msgOf(app) === "added " + NEXT; }()),
+         chainWords(app).join(" ") + " / " + msgOf(app));
+      ok("the field is cleared after a word is accepted", $(app, "word").value === "");
+      ok("a word already in the chain is refused as already used",
+         (function () { play(app, START); return msgOf(app) === "already used" &&
+                                                  chainWords(app).length === 2; }()), msgOf(app));
+      ok("Undo removes the last rung and disables itself at the start word",
+         (function () { $(app, "undo").click(); return chainWords(app).join(" ") === START &&
+                                                    $(app, "undo").disabled === true; }()));
+      $(app, "word").value = "";
+      ok("a legal word typed in lowercase is accepted",
+         (function () { play(app, NEXT.toLowerCase()); return chainWords(app).join(" ") === START + " " + NEXT; }()),
+         chainWords(app).join(" "));
+      for (i = 2; i < path.length; i++) play(app, path[i]);
+      ok("the final legal move reaches the target and flips the solved state",
+         $(app, "status").textContent === "solved in " + (path.length - 1) + " moves · shortest " + WL.puzzle.par &&
+         $(app, "word").disabled === true && msgOf(app) === "added " + TARGET,
+         $(app, "status").textContent);
+      ok("Undo is still available on a solved puzzle", $(app, "undo").disabled === false);
+      ok("the solved target rung marks the letter that changed",
+         app.doc.querySelectorAll("#target .hot").length === 1);
+      ok("no window errors or console.error across the whole matrix",
+         app.errors.length === 0, app.errors.slice(0, 2).join(" | ") || "0 errors");
+      app.close();
+    });
+  }
+
+  function solveIn(app) {
+    var path = app.WL.pathOf(app.WL.puzzle).map(function (w) { return w.toUpperCase(); });
+    for (var i = 1; i < path.length; i++) play(app, path[i]);
+    return path.length - 1;
+  }
+  function blobOf() { try { return JSON.parse(stored()); } catch (e) { return null; } }
+
+  function streakMatrix(WL) {
+    group("streak — key word-ladder.v1, header and stored blob both asserted");
+    var today = WL.today, yest = WL.shiftDays(today, -1), old = WL.shiftDays(today, -3);
+
+    function header(app) { return $(app, "streak").textContent; }
+
+    return openApp("", 390, 844).then(function (app) { // (a) no storage at all
+      ok("(a) with no stored blob the header reads streak 0", header(app) === "streak 0 · best 0", header(app));
+      ok("(a) and nothing was written just by loading", stored() === null, String(stored()));
+      app.close();
+      seed(null);
+      return openApp("", 390, 844);
+    }).then(function (app) {                          // (b) first solve
+      var moves = solveIn(app);
+      var b = blobOf();
+      ok("(b) a first solve sets streak 1 in the header",
+         header(app) === "streak 1 · best 1", header(app));
+      ok("(b) and in the blob, with lastSolved = today UTC and best >= 1",
+         b && b.v === 1 && b.streak === 1 && b.best >= 1 && b.lastSolved === today && b.solved === true,
+         JSON.stringify(b));
+      ok("(b) the blob records the chain that was played", b && b.chain.length === moves + 1);
+      app.close();
+      seed(JSON.stringify({ v: 1, puzzle: null, chain: null, solved: false, lastSolved: yest, streak: 4, best: 4 }));
+      return openApp("", 390, 844);
+    }).then(function (app) {                          // (c) yesterday + solve = +1
+      ok("(c) a blob from yesterday reads its streak back before the solve",
+         header(app) === "streak 4 · best 4", header(app));
+      solveIn(app);
+      var b = blobOf();
+      ok("(c) solving the day after yesterday's solve makes it 5",
+         header(app) === "streak 5 · best 5" && b.streak === 5 && b.lastSolved === today, header(app));
+      app.close();
+      seed(JSON.stringify({ v: 1, puzzle: null, chain: null, solved: false, lastSolved: old, streak: 9, best: 9 }));
+      return openApp("", 390, 844);
+    }).then(function (app) {                          // (d) lapsed streak
+      ok("(d) a streak last touched three days ago displays as 0",
+         header(app) === "streak 0 · best 9", header(app));
+      ok("(d) and displaying it wrote nothing back", blobOf().streak === 9 && blobOf().lastSolved === old);
+      solveIn(app);
+      var b = blobOf();
+      ok("(d) the next solve restarts it at 1 and leaves best at 9",
+         header(app) === "streak 1 · best 9" && b.streak === 1 && b.best === 9, header(app));
+      app.close();
+      return null;
+    }).then(function () {                             // (e) corrupt blobs
+      var bad = [
+        ["empty string", ""],
+        ["null", "null"],
+        ["an array", "[]"],
+        ["truncated JSON", "{"],
+        ["a future schema", '{"v":99,"streak":3,"best":3}'],
+        ["wrong types", '{"v":1,"streak":"4","best":true}'],
+        ["1e999 (Infinity)", '{"v":1,"streak":1e999,"best":1}'],
+        ["a lone surrogate", "\uD800"]
+      ];
+      var chainP = Promise.resolve();
+      bad.forEach(function (pair) {
+        chainP = chainP.then(function () {
+          seed(pair[1]);
+          return openApp("", 390, 844).then(function (app) {
+            ok("(e) corrupt blob — " + pair[0] + " — loads clean and reads streak 0",
+               !!app.WL && header(app) === "streak 0 · best 0" && app.errors.length === 0, header(app));
+            app.close();
+          });
+        });
+      });
+      return chainP;
+    }).then(function () {                             // (e-control) a good blob must read back
+      seed(JSON.stringify({ v: 1, puzzle: null, chain: null, solved: false, lastSolved: yest, streak: 6, best: 11 }));
+      return openApp("", 390, 844).then(function (app) {
+        ok("(e-control) a well-formed blob IS read back — the eight rows above are not vacuous",
+           header(app) === "streak 6 · best 11", header(app));
+        app.close();
+      });
+    }).then(function () {                             // (f) ?d= writes nothing
+      var fixed = JSON.stringify({ v: 1, puzzle: null, chain: null, solved: false, lastSolved: yest, streak: 6, best: 11 });
+      seed(fixed);
+      return openApp("?d=2026-08-10", 390, 844).then(function (app) {
+        solveIn(app);
+        ok("(f) solving under ?d= reaches the solved state",
+           $(app, "status").textContent.indexOf("solved in") === 0, $(app, "status").textContent);
+        ok("(f) and changes not one stored byte", stored() === fixed, String(stored()));
+        app.close();
+      });
+    }).then(function () {                             // ?d= validation
+      seed(null);
+      return openApp("?d=2026-02-31", 390, 844).then(function (app) {
+        ok("an impossible ?d= date falls back to today, silently",
+           $(app, "date").textContent === "Puzzle for " + WL.today + " · UTC" && app.errors.length === 0,
+           $(app, "date").textContent);
+        app.close();
+      });
+    }).then(function () {
+      return openApp("?d=%E0%A4%A", 390, 844).then(function (app) {
+        ok("a malformed percent-escape in the query does not blank the page",
+           !!app.WL && $(app, "date").textContent.indexOf("Puzzle for ") === 0, $(app, "date").textContent);
+        app.close();
+      });
+    });
+  }
+
+  function progressMatrix(WL) {
+    group("progress persistence");
+    seed(null);
+    var played = [];
+    return openApp("", 390, 844).then(function (app) {
+      var path = app.WL.pathOf(app.WL.puzzle).map(function (w) { return w.toUpperCase(); });
+      play(app, path[1]);
+      play(app, path[2]);
+      played = chainWords(app);
+      ok("two legal moves build a three-word chain", played.length === 3, played.join(" "));
+      app.close();
+      return openApp("", 390, 844);
+    }).then(function (app) {
+      ok("reloading mid-puzzle restores the chain", chainWords(app).join(" ") === played.join(" "),
+         chainWords(app).join(" "));
+      app.close();
+      var b = blobOf();
+      b.puzzle = WL.shiftDays(WL.today, -1);
+      seed(JSON.stringify(b));
+      return openApp("", 390, 844);
+    }).then(function (app) {
+      ok("a chain stored under an older puzzle date does not carry over",
+         chainWords(app).length === 1, chainWords(app).join(" "));
+      app.close();
+      seed(JSON.stringify({ v: 1, puzzle: WL.today, chain: ["ZZZZ", "ZZZY"], solved: false,
+                            lastSolved: null, streak: 0, best: 0 }));
+      return openApp("", 390, 844);
+    }).then(function (app) {
+      ok("a stored chain that is not a legal ladder is discarded",
+         chainWords(app).length === 1 && chainWords(app)[0] === app.WL.puzzle.start.toUpperCase(),
+         chainWords(app).join(" "));
+      app.close();
+      seed(null);
+      return openApp("", 320, 568);
+    }).then(function (app) {
+      group("layout at 320x568");
+      ok("no horizontal scroll at 320x568",
+         app.doc.documentElement.scrollWidth <= app.doc.documentElement.clientWidth,
+         app.doc.documentElement.scrollWidth + " <= " + app.doc.documentElement.clientWidth);
+      var small = ["word", "submit", "undo"].filter(function (id) {
+        var r = $(app, id).getBoundingClientRect();
+        return r.width < 44 || r.height < 44;
+      });
+      ok("input, Submit and Undo are all at least 44x44 CSS px at 320 wide",
+         small.length === 0, small.join(" ") || ["word", "submit", "undo"].map(function (id) {
+           var r = $(app, id).getBoundingClientRect();
+           return id + " " + Math.round(r.width) + "x" + Math.round(r.height);
+         }).join(", "));
+      app.close();
+    });
+  }
+
+  /* ------------------------------ run ------------------------------- */
+
+  function finish() {
+    try { if (saved === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, saved); }
+    catch (e) { /* ignore */ }
+    var total = pass + fail;
+    var s = document.getElementById("score");
+    s.textContent = fail === 0 ? "PASSED " + pass + "/" + total : "FAILED " + fail + " of " + total;
+    s.className = fail === 0 ? "pass" : "fail";
+    document.getElementById("note").textContent =
+      (skip ? skip + " skipped (source checks need http). " : "") +
+      (fail ? "Failures: " + failures.join(" · ") : "No failures.");
+    document.title = (fail === 0 ? "PASS " : "FAIL ") + pass + "/" + total + " — word ladder tests";
+    window.TESTS = { pass: pass, fail: fail, skip: skip, total: total, failures: failures };
+  }
+
+  openApp("", 390, 844).then(function (app) {
+    var WL = app.WL;
+    if (!WL) throw new Error("index.html loaded but exposed no engine");
+    return sourceChecks()
+      .then(function () { listAndPuzzles(app); app.close(); })
+      .then(function () { return inputMatrix(); })
+      .then(function () { return streakMatrix(WL); })
+      .then(function () { return progressMatrix(WL); });
+  }).then(finish, function (err) {
+    group("harness");
+    if (String(err.message) === "sandboxed") {
+      row("FAIL", "cannot reach index.html inside the iframe",
+          "browsers give file:// pages an opaque origin — serve the folder and open this page over http://");
+      fail++;
+      failures.push("iframe sandboxed (open over http://)");
+    } else {
+      row("FAIL", "the suite threw", String(err && (err.stack || err.message || err)));
+      fail++;
+      failures.push(String(err && err.message));
+    }
+    finish();
+  });
+}());
+</script>
+</body>
+</html>
