@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>word ladder</title>
+<meta name="description" content="A daily four-letter word ladder. Change one letter at a time to get from the start word to the target.">
+<style>
+  :root {
+    --paper:  #faf7f2;
+    --ink:    #1a1a1a;
+    --muted:  #6b6257;
+    --accent: #a3341f;
+    --rule:   #d9d2c7;
+    --rung-font: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --ui-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--ui-font);
+    font-size: 16px;
+    line-height: 1.5;
+    display: flex;
+    justify-content: center;
+    padding: max(24px, 4vh) 16px 48px;
+    -webkit-text-size-adjust: 100%;
+  }
+  main { width: 100%; max-width: 24rem; }
+
+  h1 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.34em;
+    text-indent: 0.34em;
+    text-transform: uppercase;
+    text-align: center;
+  }
+  .tag, .meta, .lab, .status, .msg {
+    margin: 0;
+    text-align: center;
+    color: var(--muted);
+  }
+  .tag { font-size: 0.8rem; margin-top: 6px; }
+  .meta { font-size: 0.78rem; }
+  #date { margin-top: 18px; }
+  #streak { margin-top: 2px; letter-spacing: 0.02em; }
+
+  /* The ladder: two rails, and the words as rungs between them. */
+  .ladder {
+    position: relative;
+    margin: 26px 0 0;
+    padding: 14px 0 10px;
+  }
+  .ladder::before, .ladder::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--rule);
+  }
+  .ladder::before { left: 4%; }
+  .ladder::after  { right: 4%; }
+
+  .lab {
+    font-size: 0.62rem;
+    letter-spacing: 0.24em;
+    text-indent: 0.24em;
+    text-transform: uppercase;
+  }
+  .rung {
+    font-family: var(--rung-font);
+    font-size: clamp(1.55rem, 8.6vw, 2.1rem);
+    font-weight: 500;
+    letter-spacing: 0.34em;
+    text-indent: 0.34em;
+    text-align: center;
+    padding: 3px 0;
+    white-space: nowrap;
+  }
+  .rung .hot { color: var(--accent); }
+  .rung.new { animation: rung-in 180ms ease-out; }
+  @keyframes rung-in { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .rung.new { animation: none; } }
+
+  #inputrow { padding: 4px 0 0; }
+  #word {
+    display: block;
+    width: 100%;
+    min-height: 56px;
+    margin: 0;
+    padding: 0 0 6px;
+    border: 0;
+    border-bottom: 2px dashed var(--rule);
+    border-radius: 0;
+    background: transparent;
+    color: var(--ink);
+    caret-color: var(--accent);
+    font-family: var(--rung-font);
+    font-size: clamp(1.55rem, 8.6vw, 2.1rem);
+    font-weight: 500;
+    letter-spacing: 0.34em;
+    text-indent: 0.34em;
+    text-align: center;
+    text-transform: uppercase;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  /* The dashed rule turning accent is the focus indicator; a box outline
+     around a full-width field reads as an error state. */
+  #word:focus { outline: none; border-bottom-color: var(--accent); border-bottom-style: solid; }
+  #word:disabled { opacity: 0.4; }
+  #inputrow.hidden { display: none; }
+
+  .hr { height: 1px; background: var(--rule); margin: 16px 12% 12px; }
+  #target { color: var(--ink); }
+  #target.solved .hot { color: var(--accent); }
+
+  .status { font-size: 0.82rem; margin-top: 20px; }
+  .status.solved { color: var(--accent); }
+
+  .controls {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 18px;
+  }
+  button {
+    flex: 1 1 0;
+    min-width: 44px;
+    min-height: 48px;
+    padding: 12px 10px;
+    border: 1px solid var(--ink);
+    border-radius: 2px;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--ui-font);
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-indent: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  button:hover:enabled { background: var(--ink); color: var(--paper); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  button:disabled { border-color: var(--rule); color: var(--rule); cursor: default; }
+
+  .msg { font-size: 0.85rem; min-height: 1.5em; margin-top: 18px; color: var(--ink); }
+  .msg.warn { color: var(--accent); }
+
+</style>
+</head>
+<body>
+<main>
+  <h1>word ladder</h1>
+  <p class="tag">change one letter at a time</p>
+  <p class="meta" id="date">&nbsp;</p>
+  <p class="meta" id="streak">&nbsp;</p>
+
+  <form id="play" autocomplete="off" novalidate>
+    <div class="ladder">
+      <p class="lab">start</p>
+      <div id="chain"></div>
+      <div id="inputrow">
+        <input id="word" type="text" maxlength="4" autocomplete="off" autocorrect="off"
+               autocapitalize="characters" spellcheck="false" aria-label="your next word" autofocus>
+      </div>
+      <div class="hr"></div>
+      <div class="rung" id="target"></div>
+      <p class="lab">target</p>
+    </div>
+
+    <p class="status" id="status">&nbsp;</p>
+
+    <div class="controls">
+      <button id="submit" type="submit">Submit</button>
+      <button id="undo" type="button">Undo</button>
+    </div>
+  </form>
+
+  <p class="msg" id="msg" role="status" aria-live="polite"></p>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------
+     The word list. Written by hand in this repo from the builder's own
+     knowledge: nothing downloaded, scraped or vendored. Lowercase, unique,
+     sorted ascending, /^[a-z]{4}$/. The sort order is load-bearing — the
+     daily puzzle is a function of the date AND of this list's exact
+     contents and order, so editing it reshuffles every past and future
+     puzzle. Frozen at v0.
+     ------------------------------------------------------------------ */
+  var WORDS = (
+    "able baby back bail bake bale ball balm band bane bank bare " +
+    "bark barn base bath bead beam bean bear beat been beep beer " +
+    "beet bell belt bend bent best bike bill bind bird bite blow " +
+    "blue blur boat body boil bold bolt bond bone book boom boot " +
+    "bore born boss both bout bowl brew buck buff bulk bull bump " +
+    "bunk burn bush bust busy buzz cage cake calf call calm came " +
+    "camp cane cape card care cart case cash cask cast cave cell " +
+    "cent chat chef chew chin chip chop cite city clam clap claw " +
+    "clay clip club clue coal coat code coil coin cold colt comb " +
+    "come cone cook cool coop cope copy cord core cork corn cost " +
+    "crew crop crow cube cuff cure curl cute dame damp dare dark " +
+    "darn dart dash data date dawn daze deal dear deck deed deep " +
+    "deer dent desk dial dice diet dime dine dire dirt disc dish " +
+    "disk dive dock doll dome done doom door dorm dose down doze " +
+    "drag draw drew drip drop drug drum dual duck duct dude duke " +
+    "dull dump dunk dust earn east easy edge edit face fact fade " +
+    "fail fair fake fall fame fare farm fast fate fear feat feed " +
+    "feel feet fell felt file fill film find fine fire firm fish " +
+    "fist five flag flat flaw flea fled flew flip flow foam foil " +
+    "fold folk fond food fool foot fork form fort four fowl free " +
+    "frog fuel full fume fund fuse gain gale game gang gate gave " +
+    "gaze gear gene gift girl give glad glow glue goal goat gold " +
+    "golf gone gong good gown grab gray grew grid grim grin grip " +
+    "grow gulf gull gush gust hail hair half hall halt hand hang " +
+    "hard hare harm harp hash haul have hawk haze head heal heap " +
+    "hear heat heed heel held helm help herb herd here hero hide " +
+    "high hike hill hint hire hiss hive hold hole holy home hood " +
+    "hoof hook hoop hoot hope horn hose host hour howl huge hull " +
+    "hung hunt hurl hush icon idea idle inch iron item jade jail " +
+    "jazz jeep join joke jump junk just kale keen keep kelp kept " +
+    "kick kilt kind king kiss kite knee knew knit knob knot know " +
+    "lace lack lady laid lair lake lamb lame lamp land lane lark " +
+    "lash last late lawn lazy lead leaf leak lean leap leek left " +
+    "lend lens lent less lick life lift like limb lime line link " +
+    "lint lion list live load loan lock lone long look loom loop " +
+    "lord lose loss lost loud love luck lull lump lung lure lush " +
+    "made maid mail main make male mall mane many mare mark mash " +
+    "mask mass mast mate math maze meal mean meat meek meet melt " +
+    "mend menu mere mesh mess mice mild mile milk mill mime mind " +
+    "mine mint miss mist moan moat mock mode mold mole mood moon " +
+    "more moss most moth move much mule must mute nail name near " +
+    "neat neck need nest news next nice nick nine node none noon " +
+    "norm nose note noun oath open oven over pace pack page paid " +
+    "pail pain pair pale palm pane pant park part pass past path " +
+    "pave peak pear peek peel peep peer pest pick pier pile pill " +
+    "pine ping pink pint pipe pity plan play plea plot plow plug " +
+    "plum plus poem poet pole poll pond pony pool poor pore pork " +
+    "port pose post pour pout pray prey prop puck puff pull pulp " +
+    "pump punk punt pure push quit quiz race rack raft rage raid " +
+    "rail rain rake ramp rang rank rant rare rash rate rave read " +
+    "real reap rear reed reef reel rent rest rice rich ride rift " +
+    "ring rink riot ripe rise risk road roam roar robe rock rode " +
+    "role roll roof room root rope rose rude ruin rule rung rush " +
+    "rust sack safe sage said sail sake sale salt same sand sane " +
+    "sang sank sash save scan seal seam seat seed seek seem seen " +
+    "self sell send sent shed ship shoe shop shot show shut sick " +
+    "side sift sign silk sing sink site size skin skip slab sled " +
+    "slid slim slip slot slow slug snap snow soak soap soar sock " +
+    "sofa soft soil sold sole solo some song soon sore sort soul " +
+    "soup sour spin spot spun spur stag star stay stem step stew " +
+    "stir stop suit sung sunk sure surf swan swap swim tail take " +
+    "tale talk tall tame tank tape tart task taxi teal team tear " +
+    "teen tell tend tent term test text than that thaw them then " +
+    "they thin this thus tick tide tidy tile till tilt time tint " +
+    "tiny tire toad toil told toll tone took tool tore torn toss " +
+    "tour town trap tray tree trim trip true tube tuck tuna tune " +
+    "turn twig twin type ugly unit urge vain vane vase vast veal " +
+    "vent vest vice view vile vine vote wade wage wail wait wake " +
+    "walk wall wand wane want ward ware warm warn wash wasp wave " +
+    "weak wear weed week weep well went were west what when whip " +
+    "wide wife wild will wind wine wing wink wipe wire wise wish " +
+    "with wolf wood wool word wore work worm worn wrap yank yard " +
+    "yarn year yell your zeal zero zest zinc zone zoom"
+  ).split(" ");
+
+  var KEY = "word-ladder.v1";
+
+  /* ---------------------------- dates (UTC only) ---------------------- */
+
+  function pad2(n) { return n < 10 ? "0" + n : "" + n; }
+
+  // Only getUTC* is used anywhere in this file, so the puzzle cannot differ
+  // between two players in different timezones at the same moment.
+  function utcDateStr(d) {
+    return d.getUTCFullYear() + "-" + pad2(d.getUTCMonth() + 1) + "-" + pad2(d.getUTCDate());
+  }
+
+  var DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+  function toUTCms(s) {
+    return Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+  }
+
+  // Regex plus a round trip, so 2026-02-31 and 2026-13-01 are rejected.
+  function isDateStr(s) {
+    if (typeof s !== "string" || !DATE_RE.test(s)) return false;
+    var ms = toUTCms(s);
+    if (!isFinite(ms)) return false;
+    return utcDateStr(new Date(ms)) === s;
+  }
+
+  function shiftDays(s, n) { return utcDateStr(new Date(toUTCms(s) + n * 86400000)); }
+
+  // URLSearchParams, never decodeURIComponent: a malformed % throws a URIError
+  // there, and a throw at this point would leave a blank page instead of today.
+  function debugDate() {
+    var v = null;
+    try { v = new URLSearchParams(location.search).get("d"); } catch (e) { v = null; }
+    return (v && isDateStr(v)) ? v : null;
+  }
+
+  /* ---------------------------- the graph ----------------------------- */
+
+  // Four wildcard buckets per word (_ATE, C_TE, CA_E, CAT_) gives adjacency in
+  // O(4N) instead of O(N^2). Two distinct four-letter words agree on exactly
+  // one bucket if they are neighbours, so no de-duplication is needed.
+  function buildNeighbours(list) {
+    var buckets = Object.create(null), nbr = Object.create(null), i, j, w, k, b;
+    for (i = 0; i < list.length; i++) {
+      w = list[i];
+      nbr[w] = [];
+      for (j = 0; j < 4; j++) {
+        k = w.slice(0, j) + "_" + w.slice(j + 1);
+        b = buckets[k];
+        if (!b) { b = buckets[k] = []; }
+        b.push(w);
+      }
+    }
+    for (k in buckets) {
+      b = buckets[k];
+      for (i = 0; i < b.length; i++) {
+        for (j = 0; j < b.length; j++) { if (i !== j) nbr[b[i]].push(b[j]); }
+      }
+    }
+    return nbr;
+  }
+
+  function largestComponent(list, nbr) {
+    var seen = Object.create(null), best = [], i, j;
+    for (i = 0; i < list.length; i++) {
+      var w = list[i];
+      if (seen[w]) continue;
+      var queue = [w], head = 0, comp = [];
+      seen[w] = true;
+      while (head < queue.length) {
+        var x = queue[head++];
+        comp.push(x);
+        var ns = nbr[x];
+        for (j = 0; j < ns.length; j++) {
+          if (!seen[ns[j]]) { seen[ns[j]] = true; queue.push(ns[j]); }
+        }
+      }
+      if (comp.length > best.length) best = comp;
+    }
+    best.sort();
+    return best;
+  }
+
+  var NBR = buildNeighbours(WORDS);
+  var COMP = largestComponent(WORDS, NBR);
+  var INCOMP = Object.create(null);
+  var WORDSET = Object.create(null);
+  (function () {
+    var i;
+    for (i = 0; i < WORDS.length; i++) WORDSET[WORDS[i]] = true;
+    for (i = 0; i < COMP.length; i++) INCOMP[COMP[i]] = true;
+  }());
+
+  function bfsFrom(start) {
+    var dist = Object.create(null), parents = Object.create(null);
+    var queue = [start], head = 0;
+    dist[start] = 0;
+    while (head < queue.length) {
+      var x = queue[head++], ns = NBR[x];
+      for (var i = 0; i < ns.length; i++) {
+        var y = ns[i];
+        if (INCOMP[y] && dist[y] === undefined) {
+          dist[y] = dist[x] + 1;
+          parents[y] = x;
+          queue.push(y);
+        }
+      }
+    }
+    return { dist: dist, parents: parents };
+  }
+
+  /* ---------------------------- the seed ------------------------------ */
+
+  function fnv1a32(s) {
+    var h = 2166136261 >>> 0;
+    for (var i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  // Integer ops plus one exact division: the same sequence on every engine.
+  function mulberry32(a) {
+    return function () {
+      a |= 0;
+      a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  /* ---------------------------- the puzzle ---------------------------- */
+
+  // Pure function of (dateStr, WORDS). Draws from one rng stream in order.
+  function puzzleFor(dateStr) {
+    var rng = mulberry32(fnv1a32("word-ladder:" + dateStr));
+    function pick(arr) { return arr[Math.floor(rng() * arr.length)]; }
+
+    function phase(lo, hi, how) {
+      for (var n = 0; n < 50; n++) {
+        var start = pick(COMP);
+        if (NBR[start].length < 2) continue;
+        var r = bfsFrom(start), cand = [], i, w, d;
+        for (i = 0; i < COMP.length; i++) {
+          w = COMP[i];
+          d = r.dist[w];
+          if (d >= lo && d <= hi && NBR[w].length >= 2) cand.push(w);
+        }
+        if (!cand.length) continue;
+        var target = pick(cand);
+        return { start: start, target: target, par: r.dist[target], parents: r.parents, how: how };
+      }
+      return null;
+    }
+
+    var p = phase(3, 5, "distance 3-5") || phase(2, 6, "widened to 2-6");
+    if (p) return p;
+
+    // Deterministic fallback: no randomness, no throw, no blank page.
+    for (var i = 0; i < COMP.length; i++) {
+      var s = COMP[i];
+      if (NBR[s].length < 2) continue;
+      var r = bfsFrom(s);
+      for (var j = 0; j < COMP.length; j++) {
+        var t = COMP[j], d = r.dist[t];
+        if (d >= 2 && d <= 6 && NBR[t].length >= 2) {
+          return { start: s, target: t, par: d, parents: r.parents, how: "sorted-scan fallback" };
+        }
+      }
+    }
+    return null;
+  }
+
+  // Rebuild the BFS path the target was discovered on. Used by tests.html to
+  // walk a real solution rather than take solvability on trust.
+  function pathOf(p) {
+    if (!p) return null;
+    var out = [p.target], w = p.target;
+    while (w !== p.start) {
+      w = p.parents[w];
+      if (w === undefined) return null;
+      out.push(w);
+    }
+    out.reverse();
+    return out;
+  }
+
+  /* ---------------------------- storage ------------------------------- */
+
+  function isCount(n) {
+    return typeof n === "number" && isFinite(n) && n >= 0 && Math.floor(n) === n;
+  }
+
+  // Every read is guarded: a corrupt or foreign blob is treated as absent.
+  function readStore() {
+    var raw, o, i;
+    try { raw = localStorage.getItem(KEY); } catch (e) { return null; }
+    if (typeof raw !== "string") return null;
+    try { o = JSON.parse(raw); } catch (e) { return null; }
+    if (!o || typeof o !== "object" || Array.isArray(o)) return null;
+    if (o.v !== 1) return null;
+    if (!isCount(o.streak) || !isCount(o.best)) return null;
+    if (o.lastSolved !== null && o.lastSolved !== undefined && !isDateStr(o.lastSolved)) return null;
+    if (o.puzzle !== null && o.puzzle !== undefined && !isDateStr(o.puzzle)) return null;
+    if (o.solved !== undefined && typeof o.solved !== "boolean") return null;
+    if (o.chain !== null && o.chain !== undefined) {
+      if (!Array.isArray(o.chain)) return null;
+      for (i = 0; i < o.chain.length; i++) {
+        if (typeof o.chain[i] !== "string" || !/^[A-Za-z]{4}$/.test(o.chain[i])) return null;
+      }
+    }
+    return {
+      streak: o.streak,
+      best: o.best,
+      lastSolved: o.lastSolved === undefined ? null : o.lastSolved,
+      puzzle: o.puzzle === undefined ? null : o.puzzle,
+      chain: o.chain === undefined ? null : o.chain,
+      solved: o.solved === true
+    };
+  }
+
+  /* ---------------------------- state --------------------------------- */
+
+  var debugDay = debugDate();
+  var readOnly = debugDay !== null;
+  var today = utcDateStr(new Date());
+  var puzzleDate = debugDay || today;
+  var PUZ = puzzleFor(puzzleDate);
+
+  var el = {
+    date: document.getElementById("date"),
+    streak: document.getElementById("streak"),
+    chain: document.getElementById("chain"),
+    inputrow: document.getElementById("inputrow"),
+    word: document.getElementById("word"),
+    target: document.getElementById("target"),
+    status: document.getElementById("status"),
+    form: document.getElementById("play"),
+    submit: document.getElementById("submit"),
+    undo: document.getElementById("undo"),
+    msg: document.getElementById("msg")
+  };
+
+  if (!PUZ) {
+    // Unreachable with the shipped list; never a blank page if it ever is.
+    el.status.textContent = "no puzzle for this date";
+    el.word.disabled = true;
+    return;
+  }
+
+  var START = PUZ.start.toUpperCase();
+  var TARGET = PUZ.target.toUpperCase();
+  var chain = [START];
+  var solved = false;
+  var justAdded = false;
+  var store = {
+    v: 1, puzzle: puzzleDate, chain: [START], solved: false,
+    lastSolved: null, streak: 0, best: 0
+  };
+
+  function diffCount(a, b) {
+    var n = 0;
+    for (var i = 0; i < 4; i++) { if (a.charAt(i) !== b.charAt(i)) n++; }
+    return n;
+  }
+
+  function firstDiff(a, b) {
+    for (var i = 0; i < 4; i++) { if (a.charAt(i) !== b.charAt(i)) return i; }
+    return -1;
+  }
+
+  // A stored chain is only restored if it is still a legal ladder from this
+  // date's start word — a list edit or a hand-written blob cannot smuggle one in.
+  function legalChain(c) {
+    if (!Array.isArray(c) || !c.length) return false;
+    var seen = Object.create(null), i, w;
+    for (i = 0; i < c.length; i++) {
+      w = String(c[i]).toUpperCase();
+      if (!WORDSET[w.toLowerCase()]) return false;
+      if (seen[w]) return false;
+      seen[w] = true;
+      if (i === 0) { if (w !== START) return false; }
+      else if (diffCount(w, String(c[i - 1]).toUpperCase()) !== 1) return false;
+    }
+    return true;
+  }
+
+  function save() {
+    if (readOnly) return;
+    // setItem throws in private-mode Safari and on a full quota; the game keeps
+    // working unpersisted.
+    try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) { /* ignore */ }
+  }
+
+  (function load() {
+    var saved = readStore();
+    if (saved) {
+      store.streak = saved.streak;
+      store.best = saved.best;
+      store.lastSolved = saved.lastSolved;
+      if (!readOnly && saved.puzzle === puzzleDate && legalChain(saved.chain)) {
+        chain = saved.chain.map(function (w) { return String(w).toUpperCase(); });
+        solved = saved.solved && chain[chain.length - 1] === TARGET;
+      }
+    }
+    store.puzzle = puzzleDate;
+    store.chain = chain.slice();
+    store.solved = solved;
+  }());
+
+  // Pure read: a lapsed streak shows as 0 without mutating storage.
+  function shownStreak() {
+    var ls = store.lastSolved;
+    if (ls && (ls === today || ls === shiftDays(today, -1))) return store.streak;
+    return 0;
+  }
+
+  /* ---------------------------- render -------------------------------- */
+
+  function rungEl(word, prev, cls) {
+    var d = document.createElement("div");
+    d.className = "rung" + (cls ? " " + cls : "");
+    // role=img + aria-label: letter-spaced text with one letter in its own span
+    // gets spelled out otherwise, so the word is announced once, as a word.
+    d.setAttribute("role", "img");
+    d.setAttribute("aria-label", word);
+    var hot = prev ? firstDiff(word, prev) : -1;
+    for (var i = 0; i < word.length; i++) {
+      var s = document.createElement("span");
+      s.textContent = word.charAt(i);
+      if (i === hot) s.className = "hot";
+      d.appendChild(s);
+    }
+    return d;
+  }
+
+  function render() {
+    el.date.textContent = "Puzzle for " + puzzleDate + " · UTC";
+    el.streak.textContent = "streak " + shownStreak() + " · best " + store.best;
+
+    // On a solve the last rung IS the target line, so it is not drawn twice.
+    var shown = solved ? chain.length - 1 : chain.length;
+    el.chain.textContent = "";
+    for (var i = 0; i < shown; i++) {
+      var isNew = justAdded && !solved && i === shown - 1 && i > 0;
+      el.chain.appendChild(rungEl(chain[i], i ? chain[i - 1] : null, isNew ? "new" : ""));
+    }
+
+    el.target.textContent = "";
+    var tprev = solved ? chain[chain.length - 2] : null;
+    var t = rungEl(TARGET, tprev, solved && justAdded ? "new" : "");
+    while (t.firstChild) el.target.appendChild(t.firstChild);
+    el.target.className = "rung" + (solved ? " solved" : "");
+    el.target.setAttribute("role", "img");
+    el.target.setAttribute("aria-label", TARGET);
+
+    el.word.disabled = solved;
+    el.inputrow.className = solved ? "hidden" : "";
+    el.undo.disabled = chain.length <= 1;
+
+    el.status.className = "status" + (solved ? " solved" : "");
+    el.status.textContent = solved
+      ? "solved in " + (chain.length - 1) + " moves · shortest " + PUZ.par
+      : "shortest: " + PUZ.par + " moves";
+
+    justAdded = false;
+  }
+
+  function say(m, warn) { el.msg.textContent = m; el.msg.className = warn ? "msg warn" : "msg"; }
+
+  /* ---------------------------- play ---------------------------------- */
+
+  // One rule disposes of case, digits, punctuation, emoji, accents, whitespace,
+  // pasted blobs and typed markup.
+  function normalise() {
+    var v = el.word.value.replace(/[^A-Za-z]/g, "").toUpperCase().slice(0, 4);
+    if (v !== el.word.value) el.word.value = v;
+    return v;
+  }
+
+  function reject(m) {
+    say(m, true);
+    el.word.focus();
+    try { el.word.select(); } catch (e) { /* ignore */ }
+  }
+
+  function commit() {
+    if (solved) return;
+    var w = normalise();
+    if (w.length === 0) return;                                  // silent no-op
+    var prev = chain[chain.length - 1];
+    if (w.length < 4) return reject("four letters");
+    if (!WORDSET[w.toLowerCase()]) return reject(w + " isn't in the list");
+    if (w === prev) return reject("that's the same word");
+    if (diffCount(w, prev) !== 1) return reject("change exactly one letter");
+    if (chain.indexOf(w) !== -1) return reject("already used");
+
+    chain.push(w);
+    store.chain = chain.slice();
+    justAdded = true;
+
+    if (w === TARGET) {
+      solved = true;
+      store.solved = true;
+      if (!readOnly && store.lastSolved !== puzzleDate) {
+        store.streak = (store.lastSolved === shiftDays(puzzleDate, -1)) ? store.streak + 1 : 1;
+        store.lastSolved = puzzleDate;
+        if (store.streak > store.best) store.best = store.streak;
+      }
+    }
+    save();
+    say("added " + w);
+    el.word.value = "";
+    render();
+    if (!solved) el.word.focus();
+  }
+
+  function undo() {
+    if (chain.length <= 1) return;
+    chain.pop();
+    solved = false;
+    store.chain = chain.slice();
+    store.solved = false;      // lastSolved is untouched: a streak is banked once
+    save();
+    say("");
+    render();
+  }
+
+  el.word.addEventListener("input", normalise);
+  el.form.addEventListener("submit", function (e) { e.preventDefault(); commit(); });
+  el.undo.addEventListener("click", undo);
+
+  render();
+  try { el.word.focus(); } catch (e) { /* ignore */ }
+
+  /* The seam tests.html drives. No behaviour depends on it. */
+  window.WL = {
+    WORDS: WORDS, NBR: NBR, COMP: COMP, KEY: KEY,
+    utcDateStr: utcDateStr, isDateStr: isDateStr, shiftDays: shiftDays,
+    fnv1a32: fnv1a32, mulberry32: mulberry32,
+    puzzleFor: puzzleFor, pathOf: pathOf, diffCount: diffCount,
+    puzzle: PUZ, puzzleDate: puzzleDate, readOnly: readOnly, today: today,
+    state: function () { return { chain: chain.slice(), solved: solved }; }
+  };
+}());
+</script>
+</body>
+</html>
