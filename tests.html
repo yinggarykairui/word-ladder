@@ -90,27 +90,99 @@
     try { return localStorage.getItem(KEY); } catch (e) { return null; }
   }
 
-  function openApp(query, w, h) {
+  // Every row below states the storage it starts from, so the suite starts
+  // from none of it. Without this the score depended on whether the player had
+  // played first — which is exactly what the README tells them to do. finish()
+  // puts their own blob back.
+  seed(null);
+
+  // Collects everything the page throws or logs as an error. Installed on the
+  // window, so it must be re-installed after any document.open() — that call
+  // wipes the window's listeners.
+  function watch(win) {
+    var errors = [];
+    win.addEventListener("error", function (ev) { errors.push("error: " + ev.message); });
+    win.addEventListener("unhandledrejection", function () { errors.push("unhandledrejection"); });
+    var ce = win.console.error;
+    win.console.error = function () { errors.push("console.error"); ce.apply(win.console, arguments); };
+    return errors;
+  }
+
+  function appOf(f, win, errors) {
+    return { frame: f, win: win, doc: win.document, errors: errors, WL: win.WL,
+             close: function () { if (f.parentNode) f.parentNode.removeChild(f); } };
+  }
+
+  function makeFrame(w, h) {
+    var f = document.createElement("iframe");
+    if (w) { f.style.width = w + "px"; f.style.height = h + "px"; }
+    stage.appendChild(f);
+    return f;
+  }
+
+  // The source of index.html, fetched once so a page can be booted into a
+  // window we already hold — see openApp's `early` mode.
+  var SRC = null;
+
+  // Writing the page into an about:blank frame is the only way to have the
+  // error capture in place BEFORE the page's own inline script runs: attaching
+  // it in the frame's load handler is already too late to see a load-time
+  // throw. The cost is that location.search is empty, so ?d= rows use the
+  // ordinary path.
+  function openWritten(w, h) {
     return new Promise(function (resolve, reject) {
-      var f = document.createElement("iframe");
-      if (w) { f.style.width = w + "px"; f.style.height = h + "px"; }
-      f.addEventListener("load", function () {
-        var win, doc;
-        try { win = f.contentWindow; doc = win.document; win.location.href; }
-        catch (e) { reject(new Error("sandboxed")); return; }
-        var errors = [];
+      var f = makeFrame(w, h);
+      f.addEventListener("load", function onload() {
+        f.removeEventListener("load", onload);
+        var win = f.contentWindow, errors;
         try {
-          win.addEventListener("error", function (ev) { errors.push("error: " + ev.message); });
-          win.addEventListener("unhandledrejection", function () { errors.push("unhandledrejection"); });
-          var ce = win.console.error;
-          win.console.error = function () { errors.push("console.error"); ce.apply(win.console, arguments); };
+          win.document.open();
+          errors = watch(win);
+          win.document.write(SRC);
+          win.document.close();
         } catch (e) { reject(new Error("sandboxed")); return; }
-        resolve({ frame: f, win: win, doc: doc, errors: errors, WL: win.WL,
-                  close: function () { if (f.parentNode) f.parentNode.removeChild(f); } });
+        resolve(appOf(f, win, errors));
+      });
+      f.src = "about:blank";
+    });
+  }
+
+  function openApp(query, w, h, early) {
+    if (early && !query && SRC) return openWritten(w, h);
+    return new Promise(function (resolve, reject) {
+      var f = makeFrame(w, h);
+      f.addEventListener("load", function () {
+        var win;
+        try { win = f.contentWindow; win.document; win.location.href; }
+        catch (e) { reject(new Error("sandboxed")); return; }
+        var errors;
+        try { errors = watch(win); } catch (e) { reject(new Error("sandboxed")); return; }
+        resolve(appOf(f, win, errors));
       });
       f.addEventListener("error", function () { reject(new Error("iframe failed to load")); });
       f.src = "index.html" + (query || "");
-      stage.appendChild(f);
+    });
+  }
+
+  // The control for the row above: a page that throws while loading must be
+  // seen to throw, or every "no errors" row in this suite is worth nothing.
+  function errorCaptureControl() {
+    return new Promise(function (resolve) {
+      var f = makeFrame(200, 100);
+      f.addEventListener("load", function onload() {
+        f.removeEventListener("load", onload);
+        var win = f.contentWindow;
+        win.document.open();
+        var errors = watch(win);
+        // The throw is deliberate; keep it out of the console so a reader of
+        // this page is not told the suite is broken by the row proving it is not.
+        win.addEventListener("error", function (ev) { ev.preventDefault(); });
+        win.document.write("<!doctype html><h1>control</h1><scr" + "ipt>throw new Error('deliberate');</scr" + "ipt>");
+        win.document.close();
+        if (f.parentNode) f.parentNode.removeChild(f);
+        resolve(errors);
+      });
+      f.src = "about:blank";
     });
   }
 
@@ -142,6 +214,7 @@
   function sourceChecks() {
     group("source integrity of index.html");
     return fetch("index.html").then(function (r) { return r.text(); }).then(function (src) {
+      SRC = src;   // reused by openApp's early-boot mode
       ok("index.html contains no Math.random", src.indexOf("Math." + "random") === -1);
       var nonUTC = src.match(/(?<!UTC)get(?:FullYear|Month|Date|Day|Hours|Minutes)\s*\(/g);
       ok("index.html calls no local-time date getters", !nonUTC, nonUTC ? nonUTC.join(" ") : "getUTC* only");
@@ -191,9 +264,26 @@
     ok("the rendered header shows today's UTC date",
        $(app, "date").textContent === "Puzzle for " + WL.utcDateStr(new Date()) + " · UTC",
        $(app, "date").textContent);
-    ok("the puzzle is a function of the date string alone (leading/trailing dates differ)",
-       WL.puzzleFor(dates[0]).start !== WL.puzzleFor(dates[1]).start ||
-       WL.puzzleFor(dates[0]).target !== WL.puzzleFor(dates[1]).target);
+    // Frozen expectations: the puzzle is a pure function of the date string and
+    // this exact word list, so these three pairs cannot move without the list
+    // moving. A row that only asserts "two dates differ" would pass on almost
+    // any generator, including a broken one.
+    var golden = [["2020-02-29", "pink>bone:4"], ["2026-01-15", "heal>bold:4"], ["2030-12-31", "doll>base:5"]];
+    var goldBad = golden.filter(function (g) {
+      var q = WL.puzzleFor(g[0]);
+      return q.start + ">" + q.target + ":" + q.par !== g[1];
+    });
+    ok("three frozen dates still generate the exact pairs they shipped with",
+       goldBad.length === 0, goldBad.map(function (g) {
+         var q = WL.puzzleFor(g[0]);
+         return g[0] + " " + q.start + ">" + q.target + ":" + q.par + " != " + g[1];
+       }).join(" ") || golden.map(function (g) { return g[0] + " " + g[1]; }).join(", "));
+    var pairs = {}, npairs = 0;
+    dates.forEach(function (d) {
+      var q = WL.puzzleFor(d), k = q.start + ">" + q.target;
+      if (!pairs[k]) { pairs[k] = 1; npairs++; }
+    });
+    ok("30 consecutive dates give at least 25 distinct pairs", npairs >= 25, npairs + " distinct");
     var seedA = WL.fnv1a32("word-ladder:2026-08-10");
     ok("fnv1a32 is stable and 32-bit unsigned", seedA === WL.fnv1a32("word-ladder:2026-08-10") &&
        seedA >= 0 && seedA <= 4294967295 && Math.floor(seedA) === seedA, "seed " + seedA);
@@ -233,22 +323,13 @@
        }()), WL.puzzle.start.toUpperCase() + " -> " + WL.puzzle.target.toUpperCase() +
              ", par " + WL.puzzle.par);
 
-    group("layout at phone width");
-    ok("no horizontal scroll at 390x844",
-       app.doc.documentElement.scrollWidth <= app.doc.documentElement.clientWidth,
-       app.doc.documentElement.scrollWidth + " <= " + app.doc.documentElement.clientWidth);
-    var small = ["word", "submit", "undo"].filter(function (id) {
-      var r = $(app, id).getBoundingClientRect();
-      return r.width < 44 || r.height < 44;
-    });
-    ok("input, Submit and Undo are all at least 44x44 CSS px at 390 wide",
-       small.length === 0, small.join(" ") || ["word", "submit", "undo"].map(function (id) {
-         var r = $(app, id).getBoundingClientRect();
-         return id + " " + Math.round(r.width) + "x" + Math.round(r.height);
-       }).join(", "));
+    group("focus order");
     ok("DOM order is input then Submit then Undo, with nothing focusable between",
        (function () {
-         var f = app.doc.querySelectorAll("input, button, a[href], select, textarea, [tabindex]");
+         // tabindex="-1" is not in the tab sequence: #status is a focus target
+         // for the solve, not a stop on the way to Undo.
+         var f = app.doc.querySelectorAll(
+           'input, button, a[href], select, textarea, [tabindex]:not([tabindex="-1"])');
          return f.length === 3 && f[0].id === "word" && f[1].id === "submit" && f[2].id === "undo";
        }()));
   }
@@ -266,8 +347,13 @@
       }
 
       // --- rejections and no-ops: the chain must not grow ---
-      ok("empty submit is a silent no-op",
-         (function () { var m = msgOf(app); play(app, ""); return chainWords(app).length === 1 && msgOf(app) === m; }()));
+      ok("an empty submit says what to do instead of nothing at all",
+         (function () {
+           play(app, "ZZZZ");            // leave a verdict on screen first
+           play(app, "");
+           return chainWords(app).length === 1 && msgOf(app) === "type a four-letter word" &&
+                  app.doc.activeElement === $(app, "word");
+         }()), msgOf(app));
       undoAll(app);
       ok("four spaces leave the field empty and the chain alone",
          (function () { play(app, "    "); return $(app, "word").value === "" && chainWords(app).length === 1; }()));
@@ -295,11 +381,24 @@
       ok("the blob does not grow the chain", chainWords(app).length === 1);
       play(app, "<script>alert(1)</" + "script>");
       ok("pasted markup is stripped to letters and never parsed",
-         $(app, "word").value.length <= 4 && app.doc.querySelectorAll("script").length === 1,
+         $(app, "word").value === "SCRI" &&
+         app.doc.body.textContent.indexOf("alert(1)") === -1,
          JSON.stringify($(app, "word").value));
-      ok("exactly one message is visible at a time", app.doc.querySelectorAll("#msg").length === 1 &&
-         msgOf(app).indexOf("\n") === -1 && $(app, "msg").getAttribute("aria-live") === "polite");
-      ok("nothing above refused a rung", chainWords(app).length === 1, chainWords(app).join(" "));
+
+      ok("accented letters are folded, not deleted",
+         (function () { type(app, "s\u00EEd\u00E9"); return $(app, "word").value === "SIDE"; }()),
+         JSON.stringify($(app, "word").value));
+      ok("a mid-word edit leaves the caret where it was typed",
+         (function () {
+           var inp = $(app, "word");
+           inp.value = "CAT";
+           inp.dispatchEvent(new app.win.Event("input", { bubbles: true }));
+           inp.value = "bCAT";
+           inp.setSelectionRange(1, 1);
+           inp.dispatchEvent(new app.win.Event("input", { bubbles: true }));
+           return inp.value === "BCAT" && inp.selectionStart === 1 && inp.selectionEnd === 1;
+         }()), $(app, "word").value + " caret " + $(app, "word").selectionStart);
+      $(app, "word").value = "";
 
       // --- positive rows: the right thing has to happen too ---
       $(app, "word").value = "";
@@ -308,6 +407,16 @@
                                                   msgOf(app) === "added " + NEXT; }()),
          chainWords(app).join(" ") + " / " + msgOf(app));
       ok("the field is cleared after a word is accepted", $(app, "word").value === "");
+      ok("the message line is replaced, never appended to",
+         (function () {
+           play(app, "ZZZZ");
+           var first = msgOf(app);
+           $(app, "word").value = "";
+           play(app, START.slice(0, 3));
+           return first === "ZZZZ isn't in the list" && msgOf(app) === "four letters" &&
+                  $(app, "msg").childNodes.length <= 1;
+         }()), msgOf(app));
+      $(app, "word").value = "";
       ok("a word already in the chain is refused as already used",
          (function () { play(app, START); return msgOf(app) === "already used" &&
                                                   chainWords(app).length === 2; }()), msgOf(app));
@@ -321,9 +430,24 @@
       for (i = 2; i < path.length; i++) play(app, path[i]);
       ok("the final legal move reaches the target and flips the solved state",
          $(app, "status").textContent === "solved in " + (path.length - 1) + " moves · shortest " + WL.puzzle.par &&
-         $(app, "word").disabled === true && msgOf(app) === "added " + TARGET,
-         $(app, "status").textContent);
-      ok("Undo is still available on a solved puzzle", $(app, "undo").disabled === false);
+         $(app, "word").disabled === true &&
+         msgOf(app) === "added " + TARGET + " · solved in " + (path.length - 1) +
+                        " moves, shortest " + WL.puzzle.par,
+         $(app, "status").textContent + " / " + msgOf(app));
+      ok("the win is announced in the live region, not only printed in the status line",
+         msgOf(app).indexOf("solved in") !== -1 && $(app, "msg").getAttribute("aria-live") === "polite",
+         msgOf(app));
+      ok("focus lands on a visible element when the input row disappears",
+         app.doc.activeElement !== app.doc.body && app.doc.activeElement !== null &&
+         app.doc.activeElement.getBoundingClientRect().height > 0,
+         app.doc.activeElement ? app.doc.activeElement.id || app.doc.activeElement.tagName : "null");
+      ok("a solve is final: Undo is disabled and cannot un-win it",
+         (function () {
+           var before = chainWords(app).length;
+           $(app, "undo").click();
+           return $(app, "undo").disabled === true && chainWords(app).length === before &&
+                  $(app, "status").textContent.indexOf("solved in") === 0;
+         }()), $(app, "status").textContent);
       ok("the solved target rung marks the letter that changed",
          app.doc.querySelectorAll("#target .hot").length === 1);
       ok("no window errors or console.error across the whole matrix",
@@ -398,14 +522,22 @@
       bad.forEach(function (pair) {
         chainP = chainP.then(function () {
           seed(pair[1]);
-          return openApp("", 390, 844).then(function (app) {
+          // early: the error capture is in place before the page's script runs,
+          // so a throw while reading this blob is actually observable.
+          return openApp("", 390, 844, true).then(function (app) {
             ok("(e) corrupt blob — " + pair[0] + " — loads clean and reads streak 0",
                !!app.WL && header(app) === "streak 0 · best 0" && app.errors.length === 0, header(app));
             app.close();
           });
         });
       });
-      return chainP;
+      return chainP.then(function () {
+        return errorCaptureControl().then(function (errors) {
+          ok("(e-control) the error capture sees a load-time throw — the eight rows above are not blind",
+             errors.length === 1 && errors[0].indexOf("deliberate") !== -1,
+             JSON.stringify(errors));
+        });
+      });
     }).then(function () {                             // (e-control) a good blob must read back
       seed(JSON.stringify({ v: 1, puzzle: null, chain: null, solved: false, lastSolved: yest, streak: 6, best: 11 }));
       return openApp("", 390, 844).then(function (app) {
@@ -473,24 +605,211 @@
          chainWords(app).join(" "));
       app.close();
       seed(null);
-      return openApp("", 320, 568);
+    });
+  }
+
+
+  /* ------------- layout and hit boxes (done-checklist item 6) -------------- */
+
+  // Everything on the page that is NOT a control. A tap on any of it must
+  // change nothing, and none of it may overlap a control's box
+  // (LESSONS 2026-08-09/10).
+  var PROSE = ["h1", ".tag", "#date", "#streak", "#chainbox .lab", ".ladder > .lab",
+               "#status", "#msg", "#target", "#chain"];
+  var CTRLS = ["word", "submit", "undo"];
+
+  function rectOf(e) {
+    var r = e.getBoundingClientRect();
+    return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height };
+  }
+  function overlaps(a, b) { return a.l < b.r - 0.5 && b.l < a.r - 0.5 && a.t < b.b - 0.5 && b.t < a.b - 0.5; }
+
+  // A legal ladder that wanders instead of solving, so the chain can be grown
+  // past the height of the screen without ending the puzzle.
+  function longWalk(app, n) {
+    var WL = app.WL, seen = {}, out = [], cur = WL.puzzle.start, ns, i, nx;
+    seen[cur] = 1; seen[WL.puzzle.target] = 1;
+    while (out.length < n) {
+      ns = WL.NBR[cur]; nx = null;
+      for (i = 0; i < ns.length; i++) { if (!seen[ns[i]]) { nx = ns[i]; break; } }
+      if (!nx) break;
+      seen[nx] = 1; out.push(nx.toUpperCase()); cur = nx;
+    }
+    return out;
+  }
+
+  function stateOf(app) {
+    return chainWords(app).join(" ") + "|" + $(app, "word").value + "|" + msgOf(app) +
+           "|" + (app.doc.activeElement ? app.doc.activeElement.id : "") +
+           "|" + ($(app, "undo").disabled ? "u-" : "u+");
+  }
+
+  function layoutAndTaps(w, h) {
+    var label = w + "x" + h;
+    // ?d= keeps the whole sweep read-only: nothing here can touch a real streak.
+    return openApp("?d=2026-08-10", w, h).then(function (app) {
+      group("layout and hit boxes at " + label);
+      var doc = app.doc, de = doc.documentElement, i, off = [], solveOff = [];
+
+      ok("no horizontal scroll at " + label, de.scrollWidth <= de.clientWidth,
+         de.scrollWidth + " <= " + de.clientWidth);
+
+      function checkAt(len, bag) {
+        for (var k = 0; k < CTRLS.length; k++) {
+          var e = $(app, CTRLS[k]);
+          if (CTRLS[k] === "word" && e.disabled) continue;   // solved: the field is gone by design
+          var r = e.getBoundingClientRect();
+          if (!(r.top >= -0.5 && r.bottom <= app.win.innerHeight + 0.5)) bag.push(CTRLS[k] + "@" + len);
+        }
+        var m = $(app, "msg").getBoundingClientRect();
+        if (!(m.top >= -0.5 && m.bottom <= app.win.innerHeight + 0.5)) bag.push("msg@" + len);
+        if (de.scrollHeight > de.clientHeight + 1) bag.push("page-grew@" + len);
+      }
+
+      // B1: the whole feedback loop stays on screen however long the ladder gets.
+      var walk = longWalk(app, 10);
+      checkAt(0, off);
+      for (i = 0; i < walk.length; i++) { play(app, walk[i]); checkAt(i + 1, off); }
+      ok("input, message, Submit and Undo stay in the viewport across a " + walk.length +
+         "-rung wander at " + label, off.length === 0,
+         off.slice(0, 4).join(" ") || (walk.length + 1) + " chain lengths, none off screen");
+
+      undoAll(app);
+      var path = app.WL.pathOf(app.WL.puzzle).map(function (x) { return x.toUpperCase(); });
+      checkAt("0", solveOff);
+      for (i = 1; i < path.length; i++) { play(app, path[i]); checkAt(i, solveOff); }
+      ok("and through a full solve at " + label, solveOff.length === 0,
+         solveOff.slice(0, 4).join(" ") || path.length + " chain lengths including the solved state");
+      ok("the solved page still fits the viewport at " + label,
+         de.scrollHeight <= de.clientHeight + 1, de.scrollHeight + " <= " + de.clientHeight);
+      app.close();
+      return openApp("?d=2026-08-10", w, h);
     }).then(function (app) {
-      group("layout at 320x568");
-      ok("no horizontal scroll at 320x568",
-         app.doc.documentElement.scrollWidth <= app.doc.documentElement.clientWidth,
-         app.doc.documentElement.scrollWidth + " <= " + app.doc.documentElement.clientWidth);
-      var small = ["word", "submit", "undo"].filter(function (id) {
-        var r = $(app, id).getBoundingClientRect();
-        return r.width < 44 || r.height < 44;
+      var doc = app.doc, i, j;
+      // One rung played, so Undo is a live control for the sweep.
+      play(app, app.WL.pathOf(app.WL.puzzle)[1].toUpperCase());
+      $(app, "word").value = "";
+
+      var boxes = {}, small = [];
+      CTRLS.forEach(function (id) {
+        boxes[id] = rectOf($(app, id));
+        if (boxes[id].w < 44 || boxes[id].h < 44) small.push(id + " " + Math.round(boxes[id].w) + "x" + Math.round(boxes[id].h));
       });
-      ok("input, Submit and Undo are all at least 44x44 CSS px at 320 wide",
-         small.length === 0, small.join(" ") || ["word", "submit", "undo"].map(function (id) {
-           var r = $(app, id).getBoundingClientRect();
-           return id + " " + Math.round(r.width) + "x" + Math.round(r.height);
-         }).join(", "));
+      ok("input, Submit and Undo are all at least 44x44 CSS px at " + label,
+         small.length === 0, small.join(" ") || CTRLS.map(function (id) {
+           return id + " " + Math.round(boxes[id].w) + "x" + Math.round(boxes[id].h); }).join(", "));
+
+      // --- positive: every point across a control's whole box hits that control
+      var miss = [], pts = 0;
+      CTRLS.forEach(function (id) {
+        var e = $(app, id), r = boxes[id];
+        var xs = [r.l + 1, r.l + r.w * 0.25, r.l + r.w / 2, r.l + r.w * 0.75, r.r - 1];
+        var ys = [r.t + 1, r.t + r.h / 2, r.b - 1];
+        for (i = 0; i < xs.length; i++) for (j = 0; j < ys.length; j++) {
+          pts++;
+          var hit = doc.elementFromPoint(xs[i], ys[j]);
+          if (!(hit && (hit === e || e.contains(hit)))) {
+            miss.push(id + "(" + Math.round(xs[i]) + "," + Math.round(ys[j]) + ")->" +
+                      (hit ? (hit.id || hit.tagName) : "null"));
+          }
+        }
+      });
+      ok("every one of " + pts + " points across the three control boxes resolves to that control at " + label,
+         miss.length === 0, miss.slice(0, 3).join(" ") || pts + "/" + pts + " points");
+
+      // --- positive: a tap at the far edges of a button really does activate it
+      var dead = [];
+      var xs5 = [boxes.submit.l + 1, boxes.submit.l + boxes.submit.w * 0.25, boxes.submit.l + boxes.submit.w / 2,
+                 boxes.submit.l + boxes.submit.w * 0.75, boxes.submit.r - 1];
+      for (i = 0; i < xs5.length; i++) {
+        for (j = 0; j < 2; j++) {
+          var y = j ? boxes.submit.b - 1 : boxes.submit.t + 1;
+          say_clear(app);
+          type(app, "ZZZZ");
+          var hitS = doc.elementFromPoint(xs5[i], y);
+          if (hitS) hitS.click();
+          if (msgOf(app) !== "ZZZZ isn't in the list") dead.push("submit(" + Math.round(xs5[i]) + "," + Math.round(y) + ")");
+        }
+      }
+      $(app, "word").value = "";
+      var xs5u = [boxes.undo.l + 1, boxes.undo.l + boxes.undo.w * 0.25, boxes.undo.l + boxes.undo.w / 2,
+                  boxes.undo.l + boxes.undo.w * 0.75, boxes.undo.r - 1];
+      for (i = 0; i < xs5u.length; i++) {
+        for (j = 0; j < 2; j++) {
+          var yu = j ? boxes.undo.b - 1 : boxes.undo.t + 1;
+          play(app, app.WL.pathOf(app.WL.puzzle)[1].toUpperCase());   // rung to take back
+          var before = chainWords(app).length;
+          var hitU = doc.elementFromPoint(xs5u[i], yu);
+          if (hitU) hitU.click();
+          if (chainWords(app).length !== before - 1) dead.push("undo(" + Math.round(xs5u[i]) + "," + Math.round(yu) + ")");
+        }
+      }
+      ok("taps at the edges and quarters of Submit and Undo activate them at " + label,
+         dead.length === 0, dead.slice(0, 3).join(" ") || "20 activations, 20 hits");
+
+      // --- negative: nothing that is not a control does anything when tapped
+      play(app, app.WL.pathOf(app.WL.puzzle)[1].toUpperCase());
+      $(app, "word").value = "";
+      var before2 = stateOf(app), stray = [], npts = 0, missing = [];
+      PROSE.forEach(function (sel) {
+        var e = doc.querySelector(sel);
+        if (!e) { missing.push(sel); return; }
+        var r = rectOf(e);
+        if (r.w < 1 || r.h < 1) return;
+        [0.02, 0.25, 0.5, 0.75, 0.98].forEach(function (fx) {
+          [0.15, 0.5, 0.85].forEach(function (fy) {
+            var x = r.l + r.w * fx, y = r.t + r.h * fy;
+            if (x < 0 || y < 0 || x > app.win.innerWidth || y > app.win.innerHeight) return;
+            npts++;
+            var hit = doc.elementFromPoint(x, y);
+            var onCtrl = false;
+            CTRLS.forEach(function (id) { var c = $(app, id); if (hit && (hit === c || c.contains(hit))) onCtrl = true; });
+            if (hit) hit.click();
+            if (onCtrl || stateOf(app) !== before2) {
+              stray.push(sel + "(" + Math.round(x) + "," + Math.round(y) + ")->" +
+                         (hit ? (hit.id || hit.tagName) : "null"));
+            }
+          });
+        });
+      });
+      ok("all " + PROSE.length + " prose elements were found for the sweep at " + label,
+         missing.length === 0, missing.join(" ") || PROSE.join(" "));
+      ok("none of " + npts + " taps on labels, captions or rungs reaches a control at " + label,
+         stray.length === 0, stray.slice(0, 3).join(" ") || npts + " taps, no state change");
+
+      // --- the clearances that keep a tap off the field in the first place.
+      // Measured: with 10.2px between the field and the hairline below it,
+      // 5 of 5 taps on that hairline were retargeted into the field by
+      // Chromium's touch adjustment at 320x568; at 16px, 0 of 5. The gap
+      // above the field is load-bearing for the same reason.
+      var wr = rectOf($(app, "word"));
+      var hrEl = doc.querySelector(".hr");
+      var lastRung = doc.querySelector("#chain > .rung:last-child");
+      ok("the hairline below the field keeps its 16px clearance at " + label,
+         hrEl && rectOf(hrEl).t - wr.b >= 15.5,
+         hrEl ? (rectOf(hrEl).t - wr.b).toFixed(1) + "px" : "no .hr");
+      ok("the rung above the field keeps its 16px clearance at " + label,
+         lastRung && wr.t - rectOf(lastRung).b >= 15.5,
+         lastRung ? (wr.t - rectOf(lastRung).b).toFixed(1) + "px" : "no rung");
+
+      // --- and no prose box overlaps a control box in the first place
+      var laps = [];
+      PROSE.forEach(function (sel) {
+        var e = doc.querySelector(sel);
+        if (!e) return;
+        var r = rectOf(e);
+        if (r.w < 1 || r.h < 1) return;
+        CTRLS.forEach(function (id) { if (overlaps(r, rectOf($(app, id)))) laps.push(sel + " over " + id); });
+      });
+      ok("no caption, label or rung sits inside a control's box at " + label,
+         laps.length === 0, laps.join(" ") || "no overlaps");
+      ok("no window errors or console.error across the whole sweep at " + label,
+         app.errors.length === 0, app.errors.slice(0, 2).join(" | ") || "0 errors");
       app.close();
     });
   }
+
+  function say_clear(app) { $(app, "word").value = ""; }
 
   /* ------------------------------ run ------------------------------- */
 
@@ -515,7 +834,9 @@
       .then(function () { listAndPuzzles(app); app.close(); })
       .then(function () { return inputMatrix(); })
       .then(function () { return streakMatrix(WL); })
-      .then(function () { return progressMatrix(WL); });
+      .then(function () { return progressMatrix(WL); })
+      .then(function () { return layoutAndTaps(320, 568); })
+      .then(function () { return layoutAndTaps(390, 844); });
   }).then(finish, function (err) {
     group("harness");
     if (String(err.message) === "sandboxed") {
