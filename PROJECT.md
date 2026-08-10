@@ -138,6 +138,16 @@ item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → 
   v0 — the loss is one puzzle's chain, never the streak, and the storage-event
   merge is a design question (which chain wins?) rather than a bug fix.
 
+- **The ladder stops at the target.** Cycle 2's live-input fix let a legal rung
+  be played *past* the target, which stored a chain the loader refuses on read
+  (the target must be the last rung) and so emptied the day's progress on the
+  next reload while storage still said the day was won. Cycle 3 refuses a submit
+  once the last rung is the target. The invariant to keep: **no sequence of UI
+  actions may produce a stored chain that `legalChain` rejects** — asserted in
+  `tests.html` over three walks, and measured over 75 reload checkpoints
+  including 60 mixed actions. Anything that ever appends to the chain again has
+  to be checked against it.
+
 - **The win belongs to the date, not to the chain.** Cycle 1 made a solve final
   (Undo disabled) to stop a player un-winning a banked streak; cycle 2 reverted
   that — it contradicted the spec and left a page with nothing focusable on it.
@@ -151,8 +161,8 @@ item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → 
   both smaller than the ones they replace: the field is **not** disabled in the
   solved state (the spec's submit table says it is — but a live field is what
   makes exploring after a win possible and keeps a focusable control on the
-  page), and a rung may be played *past* the target, which drops the display
-  back to `solved today`.
+  page), and the ordered rule table has one row the spec does not list: a submit
+  while the chain already ends at the target is refused (see the thread above).
 
 - **Accented letters are folded, not stripped.** The spec's input rule is a
   literal `replace(/[^A-Za-z]/g, "")`, which turns `sîdé` into `SD` — four
