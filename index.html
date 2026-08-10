@@ -87,7 +87,9 @@
   @keyframes rung-in { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) { .rung.new { animation: none; } }
 
-  #inputrow { padding: 4px 0 0; }
+  /* The gap above the field is not decoration: with less, Chromium's touch
+     adjustment retargets a tap on the rung above straight into the input. */
+  #inputrow { padding: 16px 0 0; }
   #word {
     display: block;
     width: 100%;
