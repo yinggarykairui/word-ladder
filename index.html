@@ -92,9 +92,9 @@
   #inputrow { padding: 16px 0 0; }
   #word {
     display: block;
-    width: 100%;
-    min-height: 56px;
-    margin: 0;
+    width: 84%;
+    min-height: 48px;
+    margin: 0 auto;
     padding: 0 0 6px;
     border: 0;
     border-bottom: 2px dashed var(--rule);
@@ -115,6 +115,7 @@
   /* The dashed rule turning accent is the focus indicator; a box outline
      around a full-width field reads as an error state. */
   #word:focus { outline: none; border-bottom-color: var(--accent); border-bottom-style: solid; }
+  #word::placeholder { color: var(--rule); opacity: 1; }
   #word:disabled { opacity: 0.4; }
   #inputrow.hidden { display: none; }
 
@@ -172,7 +173,7 @@
       <div id="chain"></div>
       <div id="inputrow">
         <input id="word" type="text" maxlength="4" autocomplete="off" autocorrect="off"
-               autocapitalize="characters" spellcheck="false" aria-label="your next word" autofocus>
+               autocapitalize="characters" spellcheck="false" aria-label="your next word" placeholder="····" autofocus>
       </div>
       <div class="hr"></div>
       <div class="rung" id="target"></div>
