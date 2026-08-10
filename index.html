@@ -511,6 +511,12 @@
       return null;
     }
 
+    // Unreachable insurance, stated plainly rather than implied: on the shipped
+    // word list the first phase has never failed. Every date from 2020 to 2028
+    // — 3,000 of them — comes back "distance 3-5", so the widen phase below,
+    // the sorted-scan fallback and the `if (!PUZ)` guard have never executed
+    // outside a test built on a different list. They stay because the list is
+    // editable and a sparser one would need them; they are not covered.
     var p = phase(3, 5, "distance 3-5") || phase(2, 6, "widened to 2-6");
     if (p) return p;
 

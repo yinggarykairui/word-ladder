@@ -104,17 +104,26 @@ item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → 
 
 ## 4. Open threads
 
-- **The page is one screenful, and the chain is the only thing that scrolls.**
-  Cycle 1's blocker: the page grew as the ladder grew, and the feedback line
-  was the first thing off the bottom (at 320×568, gone after one rung; Submit
-  and Undo after two). `main` is now a column capped at the viewport height,
-  `#chainbox` is the only elastic part, and the input, its message, Submit and
-  Undo sit outside it. Measured at both phone sizes from chain length 0 through
-  a full solve: nothing leaves the viewport and the document never grows past
-  it. The consequence to keep in mind: on a short screen the chain box can be
-  under three rungs tall, and the START label scrolls away with the start word
-  (it lives inside the scroller so it can never sit above a rung that is not
-  the start).
+- **One screenful when there is room for one; an ordinary scrolling page when
+  there is not.** Cycle 1's blocker was the page growing as the ladder grew,
+  with the feedback line the first thing off the bottom. Cycle 1's fix then
+  froze the document at the viewport height, and cycle 2's blocker was the
+  consequence: on any viewport under ~420px tall — every phone in landscape —
+  the ladder column computed to 0px with the chain inside it and no scrollbar
+  anywhere to recover it, and the target word painted over the status line.
+  The shape now: `min-height` (never `height`) on the page so the document can
+  grow; wrappers that keep their automatic minimum size, so a box is never
+  shorter than what it draws; and a ladder column with a real floor
+  (`min-height: 4.8rem`, one legible rung plus its label) and a ceiling
+  (`calc(100dvh - var(--chrome))`) that is what lets the column give up height
+  at all. Below the floor the page itself takes the overflow. Measured at eight
+  viewports x three chain states: no overlaps, the column never below 77px,
+  every hidden pixel reachable by wheel and keyboard, and no page scroll at all
+  at 320x568, 390x844 and 1280x800. Two consequences to keep in mind: on a short
+  screen the chain box shows one rung and the rest scrolls inside it (it is a
+  tab stop, so the keyboard can reach it), and the START label scrolls away with
+  the start word (it lives inside the scroller so it can never sit above a rung
+  that is not the start).
 
 - **Two 16px clearances around the input are load-bearing.** Above it (the
   `#inputrow` padding) and below it (the `.hr` top margin), because Chromium's
@@ -129,12 +138,44 @@ item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → 
   v0 — the loss is one puzzle's chain, never the streak, and the storage-event
   merge is a design question (which chain wins?) rather than a bug fix.
 
-- **A solve is final, which is a deliberate deviation from the spec.** The spec
-  said Undo stays available on a solved puzzle; in practice that let a player
-  un-win a puzzle whose streak had already been banked, and left a solved
-  screen that could only be recovered by retyping the target. Cycle 1 closed it
-  by disabling Undo once solved (defect M5). If an "undo the win" affordance is
-  ever wanted, it needs a matching storage rule for the banked streak.
+- **The win belongs to the date, not to the chain.** Cycle 1 made a solve final
+  (Undo disabled) to stop a player un-winning a banked streak; cycle 2 reverted
+  that — it contradicted the spec and left a page with nothing focusable on it.
+  The build now keeps two separate facts: `solved` (this UTC date has been
+  solved, banked once, survives any Undo, persisted as `solved` in the blob) and
+  `atTarget` (the chain in front of you ends at the target right now, which is
+  what the ladder draws). Undo and the input stay live after a solve, the status
+  line reads `solved in N moves · shortest N` while the chain ends at the target
+  and `solved today · shortest N` after an Undo, and re-reaching the target
+  banks nothing a second time. Two deliberate deviations from the spec remain,
+  both smaller than the ones they replace: the field is **not** disabled in the
+  solved state (the spec's submit table says it is — but a live field is what
+  makes exploring after a win possible and keeps a focusable control on the
+  page), and a rung may be played *past* the target, which drops the display
+  back to `solved today`.
+
+- **Accented letters are folded, not stripped.** The spec's input rule is a
+  literal `replace(/[^A-Za-z]/g, "")`, which turns `sîdé` into `SD` — four
+  letters silently becoming two. The build normalises to NFD and drops the
+  combining marks first, so `sîdé` is `SIDE`. The deviation came from a
+  playtest finding (cycle-1 m6) and is kept on purpose; recorded here so the
+  spec and the build stop disagreeing silently.
+
+- **The `--chrome` constant is a measured upper bound, and it is guarded.** The
+  ladder column's ceiling is `calc(100dvh - var(--chrome))`, where `--chrome`
+  estimates every part of the page that is not the chain. It was measured on the
+  rendered page at thirteen viewports (423.7px at 390x420, 511.5px at
+  1920x1080 — it grows because the rhythm is vh-scaled) and the expression is
+  deliberately 2.6-16px above the measurement everywhere: over-estimating costs
+  a few pixels of ladder, under-estimating puts the message line back under the
+  fold. `tests.html` asserts the bound at eight viewports, so a change to the
+  vertical rhythm cannot drift it silently.
+
+- **The widen and fallback generation branches are unreachable insurance.**
+  Every date from 2020 to 2028 (3,000 checked) is generated by the first
+  `distance 3-5` phase, so `phase(2, 6)`, the sorted-scan fallback and the
+  `if (!PUZ)` guard have never executed on a real date. They stay because the
+  word list is editable, but they are uncovered and the code says so.
 
 - **Share card.** The one excluded feature with real pull (TASTE: "make things
   people share"): a copyable result line like `word-ladder 2026-08-10 · 5 moves
