@@ -5,13 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>word ladder</title>
 <meta name="description" content="A daily four-letter word ladder. Change one letter at a time to get from the start word to the target.">
+<!-- An empty inline icon: no favicon.ico request, no 404 in the console. -->
+<link rel="icon" href="data:,">
 <style>
   :root {
     --paper:  #faf7f2;
     --ink:    #1a1a1a;
     --muted:  #6b6257;
     --accent: #a3341f;
-    --rule:   #d9d2c7;
+    --rule:   #d9d2c7;   /* decorative rails and hairlines only */
+    --edge:   #8c8378;   /* control boundaries: 3.49:1 on paper (WCAG 1.4.11) */
     --rung-font: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
     --ui-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
@@ -104,6 +107,9 @@
     white-space: nowrap;
   }
   .rung .hot { color: var(--accent); }
+  /* The browser default is a blue block — the one shouty pixel on a
+     paper-and-ink page, and it lands on every refused word. */
+  ::selection { background: rgba(163, 52, 31, 0.16); }
   .rung.new { animation: rung-in 180ms ease-out; }
   @keyframes rung-in { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) { .rung.new { animation: none; } }
@@ -118,7 +124,7 @@
     margin: 0 auto;
     padding: 0 0 6px;
     border: 0;
-    border-bottom: 2px dashed var(--rule);
+    border-bottom: 2px dashed var(--edge);
     border-radius: 0;
     background: transparent;
     color: var(--ink);
@@ -136,15 +142,28 @@
   /* The dashed rule turning accent is the focus indicator; a box outline
      around a full-width field reads as an error state. */
   #word:focus { outline: none; border-bottom-color: var(--accent); border-bottom-style: solid; }
-  #word::placeholder { color: var(--rule); opacity: 1; }
+  /* The placeholder is text, so it clears 4.5:1, and the resting rule is a
+     control boundary, so it clears 3:1 — the field has to read as a field
+     before it is focused, because a phone will not autofocus it. */
+  #word::placeholder { color: var(--muted); opacity: 1; }
   #word:disabled { opacity: 0.4; }
+  /* A refused word is still in the field; struck through, it cannot be
+     misread as a rung that was accepted. */
+  #word.bad { color: var(--accent); text-decoration: line-through; text-decoration-thickness: 2px; }
   #inputrow.hidden { display: none; }
 
-  .hr { height: 1px; background: var(--rule); margin: clamp(8px, 1.8vh, 16px) 12% clamp(6px, 1.4vh, 12px); }
+  /* 16px, not a scaled gap: measured, a tap on this hairline any closer than
+     ~15px to the field is retargeted into the field by Chromium's touch
+     adjustment (5/5 stray taps at 10.2px, 0/5 at 16px). The same threshold as
+     the padding above the input, and for the same reason. */
+  .hr { height: 1px; background: var(--rule); margin: 16px 12% clamp(6px, 1.4vh, 12px); }
   #target { color: var(--ink); }
   #target.solved .hot { color: var(--accent); }
 
   .status { font-size: 0.82rem; margin-top: clamp(10px, 2.2vh, 20px); }
+  /* Focused only programmatically, when the solve takes the input away. */
+  #status:focus { outline: none; }
+  #status:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
   .status.solved { color: var(--accent); }
 
   .controls {
@@ -174,7 +193,8 @@
   }
   button:hover:enabled { background: var(--ink); color: var(--paper); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-  button:disabled { border-color: var(--rule); color: var(--rule); cursor: default; }
+  /* Disabled still has to read as a control: boundary 3.49:1, label 5.59:1. */
+  button:disabled { border-color: var(--edge); color: var(--muted); cursor: default; }
 
   .msg { font-size: 0.85rem; min-height: 1.5em; margin-top: clamp(10px, 2vh, 18px); color: var(--ink); }
   .msg.warn { color: var(--accent); }
@@ -196,14 +216,14 @@
       </div>
       <div id="inputrow">
         <input id="word" type="text" maxlength="4" autocomplete="off" autocorrect="off"
-               autocapitalize="characters" spellcheck="false" aria-label="your next word" placeholder="····" autofocus>
+               autocapitalize="characters" spellcheck="false" aria-label="your next word" placeholder="····">
       </div>
       <div class="hr"></div>
       <div class="rung" id="target"></div>
       <p class="lab">target</p>
     </div>
 
-    <p class="status" id="status">&nbsp;</p>
+    <p class="status" id="status" tabindex="-1">&nbsp;</p>
 
     <div class="controls">
       <button id="submit" type="submit">Submit</button>
@@ -332,10 +352,11 @@
 
   // URLSearchParams, never decodeURIComponent: a malformed % throws a URIError
   // there, and a throw at this point would leave a blank page instead of today.
-  function debugDate() {
+  function debugParam() {
     var v = null;
     try { v = new URLSearchParams(location.search).get("d"); } catch (e) { v = null; }
-    return (v && isDateStr(v)) ? v : null;
+    if (v === null) return { day: null, bad: false };
+    return isDateStr(v) ? { day: v, bad: false } : { day: null, bad: true };
   }
 
   /* ---------------------------- the graph ----------------------------- */
@@ -527,7 +548,8 @@
 
   /* ---------------------------- state --------------------------------- */
 
-  var debugDay = debugDate();
+  var dparam = debugParam();
+  var debugDay = dparam.day;
   var readOnly = debugDay !== null;
   var today = utcDateStr(new Date());
   var puzzleDate = debugDay || today;
@@ -586,6 +608,9 @@
       if (!WORDSET[w.toLowerCase()]) return false;
       if (seen[w]) return false;
       seen[w] = true;
+      // The target may only appear as the last rung: a hand-written blob that
+      // buries it mid-chain would leave a puzzle that can never be completed.
+      if (w === TARGET && i !== c.length - 1) return false;
       if (i === 0) { if (w !== START) return false; }
       else if (diffCount(w, String(c[i - 1]).toUpperCase()) !== 1) return false;
     }
@@ -607,7 +632,9 @@
       store.lastSolved = saved.lastSolved;
       if (!readOnly && saved.puzzle === puzzleDate && legalChain(saved.chain)) {
         chain = saved.chain.map(function (w) { return String(w).toUpperCase(); });
-        solved = saved.solved && chain[chain.length - 1] === TARGET;
+        // The chain is the truth, not the flag beside it: a chain ending at the
+        // target is a solved puzzle however it got into storage.
+        solved = chain[chain.length - 1] === TARGET;
       }
     }
     store.puzzle = puzzleDate;
@@ -642,7 +669,8 @@
   }
 
   function render() {
-    el.date.textContent = "Puzzle for " + puzzleDate + " · UTC";
+    el.date.textContent = "Puzzle for " + puzzleDate + " · UTC" +
+      (readOnly ? " · replay, nothing saved" : "");
     el.streak.textContent = "streak " + shownStreak() + " · best " + store.best;
 
     // On a solve the last rung IS the target line, so it is not drawn twice.
@@ -663,7 +691,7 @@
 
     el.word.disabled = solved;
     el.inputrow.className = solved ? "hidden" : "";
-    el.undo.disabled = chain.length <= 1;
+    el.undo.disabled = solved || chain.length <= 1;
 
     el.status.className = "status" + (solved ? " solved" : "");
     el.status.textContent = solved
@@ -681,16 +709,36 @@
 
   /* ---------------------------- play ---------------------------------- */
 
-  // One rule disposes of case, digits, punctuation, emoji, accents, whitespace,
-  // pasted blobs and typed markup.
+  // One rule disposes of case, digits, punctuation, emoji, whitespace, pasted
+  // blobs and typed markup. Accents are folded rather than dropped, so an
+  // accent keyboard typing "sîdé" gets SIDE and not SD.
+  var COMBINING = /[\u0300-\u036f]/g;
+  function fold(raw) {
+    var s = String(raw);
+    if (s.normalize) { try { s = s.normalize("NFD").replace(COMBINING, ""); } catch (e) { /* ignore */ } }
+    return s.replace(/[^A-Za-z]/g, "").toUpperCase().slice(0, 4);
+  }
+
   function normalise() {
-    var v = el.word.value.replace(/[^A-Za-z]/g, "").toUpperCase().slice(0, 4);
-    if (v !== el.word.value) el.word.value = v;
+    var raw = el.word.value, v = fold(raw);
+    if (v !== raw) {
+      // Assigning .value throws the caret to the end, so the selection is
+      // mapped through the same fold and put back: typing into the middle of
+      // a word must not jump the caret.
+      var a = el.word.selectionStart, b = el.word.selectionEnd;
+      el.word.value = v;
+      if (typeof a === "number" && typeof b === "number") {
+        try { el.word.setSelectionRange(fold(raw.slice(0, a)).length, fold(raw.slice(0, b)).length); }
+        catch (e) { /* ignore */ }
+      }
+    }
     return v;
   }
 
   function reject(m) {
     say(m, true);
+    // Struck through, the refused word cannot be misread as an accepted rung.
+    el.word.className = "bad";
     el.word.focus();
     try { el.word.select(); } catch (e) { /* ignore */ }
   }
@@ -698,7 +746,15 @@
   function commit() {
     if (solved) return;
     var w = normalise();
-    if (w.length === 0) return;                                  // silent no-op
+    if (w.length === 0) {
+      // Not silent: an empty submit used to do nothing at all, which taught the
+      // player the button was dead, and it left the previous attempt's verdict
+      // standing as though it described this one.
+      say("type a four-letter word");
+      el.word.className = "";
+      el.word.focus();
+      return;
+    }
     var prev = chain[chain.length - 1];
     if (w.length < 4) return reject("four letters");
     if (!WORDSET[w.toLowerCase()]) return reject(w + " isn't in the list");
@@ -720,29 +776,43 @@
       }
     }
     save();
-    say("added " + w);
+    // The win is announced in the live region, not only printed in #status:
+    // otherwise a screen-reader player is never told they solved it.
+    say(solved
+      ? "added " + w + " · solved in " + (chain.length - 1) + " moves, shortest " + PUZ.par
+      : "added " + w);
     el.word.value = "";
+    el.word.className = "";
     render();
-    if (!solved) el.word.focus();
+    // The input row is gone once solved, so focus has to land somewhere real
+    // rather than falling to BODY.
+    if (solved) { try { el.status.focus(); } catch (e) { /* ignore */ } }
+    else el.word.focus();
   }
 
   function undo() {
-    if (chain.length <= 1) return;
+    // A solve is final: undoing past it un-won a puzzle whose streak had
+    // already been banked, and left a solved screen you could not get back.
+    if (solved || chain.length <= 1) return;
+    var undoHadFocus = document.activeElement === el.undo;
     chain.pop();
-    solved = false;
     store.chain = chain.slice();
     store.solved = false;      // lastSolved is untouched: a streak is banked once
     save();
     say("");
     render();
+    // Disabling the button that holds focus drops activeElement to BODY.
+    if (undoHadFocus && el.undo.disabled) el.word.focus();
   }
 
-  el.word.addEventListener("input", normalise);
+  el.word.addEventListener("input", function () { el.word.className = ""; normalise(); });
   el.form.addEventListener("submit", function (e) { e.preventDefault(); commit(); });
   el.undo.addEventListener("click", undo);
 
   render();
   try { el.word.focus(); } catch (e) { /* ignore */ }
+  // A ?d= that is not a date is not silently ignored.
+  if (dparam.bad) say("that ?d= isn't a date — showing today", true);
 
   /* The seam tests.html drives. No behaviour depends on it. */
   window.WL = {
