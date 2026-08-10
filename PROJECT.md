@@ -94,9 +94,9 @@ Increment 1 (day 017) is the whole of v0. States: `todo` · `wip` · `done` · `
 | 1.6 | Play loop: input normalisation on `input`, ordered validation table, append/undo, solved state, move count vs `par` | done |
 | 1.7 | `word-ladder.v1` storage: progress restore, streak/best arithmetic, lapsed-streak display rule, corrupt-blob tolerance, `?d=` read-only | done |
 | 1.8 | `tests.html`: determinism ×30 dates, solvability walk, list integrity, validation matrix (with positive rows), streak matrix (with a positive row) | done |
-| 1.9 | Phone-width + hit-box sweep at 320×568 and 390×844, whole-box, both directions | done |
-| 1.10 | README made true, `screenshot.png` captured from the shipped build, LICENSE (MIT), description, topics | wip — README true and LICENSE in; screenshot/description/topics are the shipper's |
-| 1.11 | Pages enabled from repo root; live URL confirmed loading the working build | todo |
+| 1.9 | Phone-width + hit-box sweep at 320×568 and 390×844, whole-box, both directions | done — and shipped as assertions in `tests.html` after cycle 1 (m9) |
+| 1.10 | README made true, `screenshot.png` captured from the shipped build, LICENSE (MIT), description, topics | wip — README, LICENSE and `screenshot.png` (1280×800 headless capture, two moves into the 2026-08-10 puzzle) are in; repo description and topics are the shipper's, over the API |
+| 1.11 | Pages enabled from repo root; live URL confirmed loading the working build | done — confirmed live by the cycle-1 critics. Not re-checkable from the fixer's sandbox: `yinggarykairui.github.io` is not in its network egress allowlist (403 `host_not_allowed`), so re-verify after the next push from a shift that can reach it |
 
 Checklist items 1–7 in the issue comment map to: 1.4/1.5 → item 1; 1.5/1.8 →
 item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → item 6;
@@ -104,12 +104,37 @@ item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → 
 
 ## 4. Open threads
 
-- **Vertical scroll on short phones.** A solved five-rung puzzle is 667px tall
-  at 320×568, so the controls sit below the fold and the page scrolls. That is
-  allowed (only horizontal scroll is forbidden) and the tap sweep confirms the
-  controls work once scrolled to, but the margins that keep taps off the
-  controls are load-bearing (16px above the input; see the fix commit) and must
-  not be traded away for vertical compactness.
+- **The page is one screenful, and the chain is the only thing that scrolls.**
+  Cycle 1's blocker: the page grew as the ladder grew, and the feedback line
+  was the first thing off the bottom (at 320×568, gone after one rung; Submit
+  and Undo after two). `main` is now a column capped at the viewport height,
+  `#chainbox` is the only elastic part, and the input, its message, Submit and
+  Undo sit outside it. Measured at both phone sizes from chain length 0 through
+  a full solve: nothing leaves the viewport and the document never grows past
+  it. The consequence to keep in mind: on a short screen the chain box can be
+  under three rungs tall, and the START label scrolls away with the start word
+  (it lives inside the scroller so it can never sit above a rung that is not
+  the start).
+
+- **Two 16px clearances around the input are load-bearing.** Above it (the
+  `#inputrow` padding) and below it (the `.hr` top margin), because Chromium's
+  touch adjustment retargets a nearby tap into the field. Measured while fixing
+  the layout: at 10.2px below the field, 5 of 5 taps on that hairline were
+  stolen into the field at 320×568; at 16px, 0 of 5. Neither gap may be scaled
+  down for vertical compactness — `tests.html` asserts both.
+
+- **Two tabs, last write wins.** Open the puzzle in two tabs, play a rung in
+  each, and reloading the first shows only the second's chain: every write is a
+  whole-blob `setItem` and nothing listens for the `storage` event. Accepted for
+  v0 — the loss is one puzzle's chain, never the streak, and the storage-event
+  merge is a design question (which chain wins?) rather than a bug fix.
+
+- **A solve is final, which is a deliberate deviation from the spec.** The spec
+  said Undo stays available on a solved puzzle; in practice that let a player
+  un-win a puzzle whose streak had already been banked, and left a solved
+  screen that could only be recovered by retyping the target. Cycle 1 closed it
+  by disabling Undo once solved (defect M5). If an "undo the win" affordance is
+  ever wanted, it needs a matching storage rule for the banked streak.
 
 - **Share card.** The one excluded feature with real pull (TASTE: "make things
   people share"): a copyable result line like `word-ladder 2026-08-10 · 5 moves

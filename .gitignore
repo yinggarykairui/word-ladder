@@ -1,0 +1,7 @@
+# Nothing in this build is generated, installed or bundled — the tree is the
+# source. This is here to keep editor and OS litter out of it.
+.DS_Store
+Thumbs.db
+*.swp
+*~
+node_modules/
