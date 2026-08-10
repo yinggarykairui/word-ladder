@@ -441,11 +441,13 @@
          app.doc.activeElement !== app.doc.body && app.doc.activeElement !== null &&
          app.doc.activeElement.getBoundingClientRect().height > 0,
          app.doc.activeElement ? app.doc.activeElement.id || app.doc.activeElement.tagName : "null");
-      ok("a solve is final: Undo is disabled and cannot un-win it",
+      ok("a solve is final: both buttons are disabled and Undo cannot un-win it",
          (function () {
            var before = chainWords(app).length;
            $(app, "undo").click();
-           return $(app, "undo").disabled === true && chainWords(app).length === before &&
+           submit(app);
+           return $(app, "undo").disabled === true && $(app, "submit").disabled === true &&
+                  chainWords(app).length === before &&
                   $(app, "status").textContent.indexOf("solved in") === 0;
          }()), $(app, "status").textContent);
       ok("the solved target rung marks the letter that changed",

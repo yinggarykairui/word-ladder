@@ -691,7 +691,10 @@
 
     el.word.disabled = solved;
     el.inputrow.className = solved ? "hidden" : "";
+    // Once solved, neither button has anything left to do; disabled says so,
+    // where an enabled button that silently does nothing would not.
     el.undo.disabled = solved || chain.length <= 1;
+    el.submit.disabled = solved;
 
     el.status.className = "status" + (solved ? " solved" : "");
     el.status.textContent = solved
