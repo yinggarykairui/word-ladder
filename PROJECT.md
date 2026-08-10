@@ -66,8 +66,12 @@ index.html
    └─ render          textContent only, never innerHTML with player input;
                       one aria-live="polite" message line, replaced not appended.
 
-tests.html            standalone assertion page, no framework. Imports nothing
-                      — it inlines/loads the same functions and prints N/N.
+tests.html            standalone assertion page, no framework. Loads index.html
+                      in an iframe and drives the real page, reading the engine
+                      off the window.WL seam, so there is no second copy of the
+                      code to drift. Prints N/N. Needs http:// (browsers give
+                      file:// pages an opaque origin and block iframe access);
+                      it says so on the page when it cannot get in.
 ```
 
 Data flow is one direction: `dateStr → seed → puzzle → view`, with
@@ -82,16 +86,16 @@ Increment 1 (day 017) is the whole of v0. States: `todo` · `wip` · `done` · `
 
 | # | Item | State |
 |---|------|-------|
-| 1.1 | `index.html` skeleton, paper/ink typographic layout, phone-first column | todo |
-| 1.2 | Word list: 600–900 hand-written common 4-letter words, sorted, unique | todo |
-| 1.3 | Wildcard-bucket adjacency graph + largest-component flood fill | todo |
-| 1.4 | `fnv1a32` + `mulberry32`; UTC `dateStr`; `?d=` parse via `URLSearchParams` (never `decodeURIComponent`) with regex + round-trip validation, bad values falling back to today silently | todo |
-| 1.5 | `puzzleFor(date)`: seeded start pick, BFS, distance 3–5 candidates, widen 2–6, sorted-scan fallback; returns `par` and BFS parents | todo |
-| 1.6 | Play loop: input normalisation on `input`, ordered validation table, append/undo, solved state, move count vs `par` | todo |
-| 1.7 | `word-ladder.v1` storage: progress restore, streak/best arithmetic, lapsed-streak display rule, corrupt-blob tolerance, `?d=` read-only | todo |
-| 1.8 | `tests.html`: determinism ×30 dates, solvability walk, list integrity, validation matrix (with positive rows), streak matrix (with a positive row) | todo |
-| 1.9 | Phone-width + hit-box sweep at 320×568 and 390×844, whole-box, both directions | todo |
-| 1.10 | README made true, `screenshot.png` captured from the shipped build, LICENSE (MIT), description, topics | todo |
+| 1.1 | `index.html` skeleton, paper/ink typographic layout, phone-first column | done |
+| 1.2 | Word list: 600–900 hand-written common 4-letter words, sorted, unique | done |
+| 1.3 | Wildcard-bucket adjacency graph + largest-component flood fill | done |
+| 1.4 | `fnv1a32` + `mulberry32`; UTC `dateStr`; `?d=` parse via `URLSearchParams` (never `decodeURIComponent`) with regex + round-trip validation, bad values falling back to today silently | done |
+| 1.5 | `puzzleFor(date)`: seeded start pick, BFS, distance 3–5 candidates, widen 2–6, sorted-scan fallback; returns `par` and BFS parents | done |
+| 1.6 | Play loop: input normalisation on `input`, ordered validation table, append/undo, solved state, move count vs `par` | done |
+| 1.7 | `word-ladder.v1` storage: progress restore, streak/best arithmetic, lapsed-streak display rule, corrupt-blob tolerance, `?d=` read-only | done |
+| 1.8 | `tests.html`: determinism ×30 dates, solvability walk, list integrity, validation matrix (with positive rows), streak matrix (with a positive row) | done |
+| 1.9 | Phone-width + hit-box sweep at 320×568 and 390×844, whole-box, both directions | done |
+| 1.10 | README made true, `screenshot.png` captured from the shipped build, LICENSE (MIT), description, topics | wip — README true and LICENSE in; screenshot/description/topics are the shipper's |
 | 1.11 | Pages enabled from repo root; live URL confirmed loading the working build | todo |
 
 Checklist items 1–7 in the issue comment map to: 1.4/1.5 → item 1; 1.5/1.8 →
@@ -99,6 +103,13 @@ item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → 
 1.10/1.11 → item 7.
 
 ## 4. Open threads
+
+- **Vertical scroll on short phones.** A solved five-rung puzzle is 667px tall
+  at 320×568, so the controls sit below the fold and the page scrolls. That is
+  allowed (only horizontal scroll is forbidden) and the tap sweep confirms the
+  controls work once scrolled to, but the margins that keep taps off the
+  controls are load-bearing (16px above the input; see the fix commit) and must
+  not be traded away for vertical compactness.
 
 - **Share card.** The one excluded feature with real pull (TASTE: "make things
   people share"): a copyable result line like `word-ladder 2026-08-10 · 5 moves
@@ -112,14 +123,17 @@ item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → 
   extended, either accept the reshuffle (nothing but streak counts is stored,
   so nothing breaks) or bump to a `word-ladder.v2` scheme that pins the list —
   decide at revisit, not now.
-- **Difficulty drift.** `par` 3–5 was chosen unmeasured. After ship, the actual
-  distribution of `par` and of candidate-set sizes across a year of dates is
-  worth printing from `tests.html`; if most dates land at 3, the range may want
-  narrowing to 4–5 in a revisit.
-- **Component size unknown until the list exists.** The ≥60% largest-component
-  assertion is the tripwire; if a hand-written list fails it, the fix is to
-  curate toward dense families (`-ate`, `-ore`, `-ill`, `-and`, `b_ll`, `c_t`)
-  rather than to lower the threshold.
+- **Difficulty drift.** `par` 3–5 was chosen unmeasured. Measured over 60
+  consecutive dates around ship: par 3 ×11, par 4 ×22, par 5 ×27, and the
+  distance-3–5 branch fired on all 60 — the widen and fallback branches have
+  never run on a real date, so they are guarded but unexercised in the wild.
+  The skew is toward the long end, so narrowing to 4–5 would cut the easiest
+  fifth of days; worth a revisit decision, not a v0 change.
+- **Component size — answered.** The shipped list is **874 words**; the largest
+  connected component is **821 of them (93.9%)**, and 772 of those have degree
+  ≥ 2. The ≥60% tripwire passes with room. Curating toward dense families
+  (`-ate`, `-ail`, `-ell`, `-ill`, `-ore`, `b_ll`, `c_re`) is what bought it;
+  a few dozen isolated abstract words were dropped rather than the threshold.
 - **No archive.** `?d=` exists for verification and is documented honestly, but
   nothing in the page links to it. A real archive (and whether replaying old
   puzzles should ever count toward a streak — currently: never) is a separate
