@@ -888,6 +888,124 @@
   function say_clear(app) { $(app, "word").value = ""; }
 
 
+
+  /* -------- the stored chain always round-trips (R1) --------------------
+     Cycle 2 re-enabled Submit after a solve, which let a rung be played past
+     the target. The loader refuses a chain whose target is not its last rung,
+     so the next reload silently emptied the day's progress while storage still
+     said the day was won — and none of the 147 rows could see it. These rows
+     do not enumerate the paths anyone thought of: they reload after each walk
+     and compare what comes back with what was on the screen, and they check the
+     stored chain's shape directly. */
+
+  function snapOf(app) {
+    return {
+      chain: app.WL.state().chain.join(" "),
+      status: $(app, "status").textContent,
+      lab: $(app, "targetlab").textContent,
+      streak: $(app, "streak").textContent
+    };
+  }
+  function sameSnap(a, b) {
+    return a.chain === b.chain && a.status === b.status && a.lab === b.lab && a.streak === b.streak;
+  }
+  function snapStr(s) { return s.chain + " | " + s.status + " | " + s.lab + " | " + s.streak; }
+
+  // The shape the loader will accept: a ladder from the start word, no repeats,
+  // and the target only ever as the last rung.
+  function storedChainIsLegal(WL, target, start) {
+    var b = blobOf(), i, seen = {}, d, j;
+    if (!b || !b.chain) return "no chain stored";
+    if (b.chain[0] !== start) return "does not start at " + start;
+    for (i = 0; i < b.chain.length; i++) {
+      if (seen[b.chain[i]]) return "repeats " + b.chain[i];
+      seen[b.chain[i]] = 1;
+      if (b.chain[i] === target && i !== b.chain.length - 1) return "buries the target at " + i;
+      if (i) {
+        d = 0;
+        for (j = 0; j < 4; j++) if (b.chain[i].charAt(j) !== b.chain[i - 1].charAt(j)) d++;
+        if (d !== 1) return b.chain[i - 1] + "->" + b.chain[i] + " is not one letter";
+      }
+    }
+    return null;
+  }
+
+  function roundTrip(WL) {
+    group("the stored chain always round-trips (R1)");
+    seed(null);
+    var path, TARGET, START, beyond, before, chainAtSolve;
+    return openApp("", 390, 844).then(function (app) {
+      path = app.WL.pathOf(app.WL.puzzle).map(function (x) { return x.toUpperCase(); });
+      TARGET = path[path.length - 1];
+      START = path[0];
+      solveIn(app);
+      chainAtSolve = app.WL.state().chain.join(" ");
+      // a real word, one letter from the target, not yet used — the repro
+      beyond = (function () {
+        var ns = app.WL.NBR[TARGET.toLowerCase()], cur = app.WL.state().chain, i, u;
+        for (i = 0; i < ns.length; i++) {
+          u = ns[i].toUpperCase();
+          if (cur.indexOf(u) === -1) return u;
+        }
+        return null;
+      }());
+      play(app, beyond);
+      ok("a submit once the ladder reaches the target is refused, not appended",
+         msgOf(app) === "already at the target — Undo to step back" &&
+         app.WL.state().chain.join(" ") === chainAtSolve,
+         beyond + " -> " + msgOf(app) + " / " + app.WL.state().chain.join(" "));
+      ok("and the refusal leaves the target drawn once, as the target line",
+         chainWords(app).indexOf(TARGET) === -1 && $(app, "targetlab").textContent === "solved",
+         chainWords(app).join(" "));
+      ok("the stored chain is still a chain the loader will accept",
+         storedChainIsLegal(WL, TARGET, START) === null, storedChainIsLegal(WL, TARGET, START) || blobOf().chain.join(">"));
+      before = snapOf(app);
+      app.close();
+      return openApp("", 390, 844);
+    }).then(function (app) {
+      ok("(walk 1) solve -> submit past the target -> reload brings back what was on screen",
+         sameSnap(before, snapOf(app)), snapStr(before) + "   vs   " + snapStr(snapOf(app)));
+      // walk 2: solve -> undo -> submit -> reload
+      $(app, "undo").click();
+      var ns = app.WL.NBR[app.WL.state().chain[app.WL.state().chain.length - 1].toLowerCase()];
+      var cur = app.WL.state().chain, i, u, nxt = null;
+      for (i = 0; i < ns.length; i++) {
+        u = ns[i].toUpperCase();
+        if (cur.indexOf(u) === -1 && u !== TARGET) { nxt = u; break; }
+      }
+      if (nxt) play(app, nxt);
+      ok("the stored chain after undo-then-play is still one the loader will accept",
+         storedChainIsLegal(WL, TARGET, START) === null, storedChainIsLegal(WL, TARGET, START) || blobOf().chain.join(">"));
+      before = snapOf(app);
+      app.close();
+      return openApp("", 390, 844);
+    }).then(function (app) {
+      ok("(walk 2) solve -> undo -> play a different rung -> reload brings back what was on screen",
+         sameSnap(before, snapOf(app)), snapStr(before) + "   vs   " + snapStr(snapOf(app)));
+      // walk 3: undo all the way back, replay to the target
+      undoAll(app);
+      ok("(walk 3) undo back to the start word leaves a one-word chain the loader accepts",
+         app.WL.state().chain.length === 1 && storedChainIsLegal(WL, TARGET, START) === null,
+         blobOf().chain.join(">"));
+      solveIn(app);
+      before = snapOf(app);
+      app.close();
+      return openApp("", 390, 844);
+    }).then(function (app) {
+      ok("(walk 3) undo-to-start -> replay to the target -> reload brings back what was on screen",
+         sameSnap(before, snapOf(app)), snapStr(before) + "   vs   " + snapStr(snapOf(app)));
+      ok("(walk 3) and the day is still won exactly once",
+         blobOf().streak === 1 && blobOf().best === 1 && blobOf().solved === true,
+         JSON.stringify(blobOf()));
+      ok("the screen and the blob agree about the win after every walk",
+         (blobOf().solved === true) === ($(app, "status").textContent.indexOf("solved") === 0 &&
+                                          $(app, "targetlab").textContent === "solved"),
+         $(app, "status").textContent + " / " + $(app, "targetlab").textContent);
+      app.close();
+      seed(null);
+    });
+  }
+
   /* ---------------- the viewport HEIGHT axis (C1, C2) ---------------------
      Cycle 1 swept two widths and no heights, and a layout that collapsed the
      ladder column to 0px on every phone in landscape passed 101 assertions.
@@ -980,8 +1098,12 @@
         // 5. the controls are live and act, in every state
         if ($(app, "word").disabled || $(app, "submit").disabled) deadCtrl.push(states[si] + " a control is disabled");
         var before = app.WL.state().chain.length;
+        var atEnd = app.WL.state().chain[before - 1] === app.WL.puzzle.target.toUpperCase();
         play(app, "ZZZZ");
-        if (msgOf(app) !== "ZZZZ isn't in the list") deadCtrl.push(states[si] + " Submit did not act");
+        // Whichever verdict the state calls for, Submit has to produce one.
+        if (msgOf(app) !== (atEnd ? "already at the target — Undo to step back" : "ZZZZ isn't in the list")) {
+          deadCtrl.push(states[si] + " Submit did not act: " + JSON.stringify(msgOf(app)));
+        }
         $(app, "word").value = "";
         if (!$(app, "undo").disabled) {
           $(app, "undo").click();
@@ -1039,6 +1161,7 @@
       .then(function () { return progressMatrix(WL); })
       .then(function () { return layoutAndTaps(320, 568); })
       .then(function () { return layoutAndTaps(390, 844); })
+      .then(function () { return roundTrip(WL); })
       .then(function () { return heightSweepAll(); });
   }).then(finish, function (err) {
     group("harness");
