@@ -15,6 +15,18 @@
     --accent: #a3341f;
     --rule:   #d9d2c7;   /* decorative rails and hairlines only */
     --edge:   #8c8378;   /* control boundaries: 3.49:1 on paper (WCAG 1.4.11) */
+    --padT: clamp(12px, 2.6vh, 24px);
+    --padB: clamp(12px, 2.2vh, 24px);
+    /* Everything on the page except the played chain — header, input row, rule,
+       target, status, buttons, message, body padding. Measured on the rendered
+       page at thirteen viewports from 320x400 to 1920x1080: 423.7px at the
+       short end, 511.5px at the tall end (it grows because the rhythm is
+       vh-scaled). This expression is a deliberate UPPER bound on that
+       measurement — between 2.6px and 16px above it everywhere — because
+       over-estimating costs a few pixels of ladder and under-estimating puts
+       the message line back under the fold. tests.html asserts the bound at
+       eight viewports, so an edit to the rhythm cannot drift it silently. */
+    --chrome: clamp(436px, calc(16vh + 364px), 520px);
     --rung-font: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
     --ui-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
@@ -28,31 +40,52 @@
     line-height: 1.5;
     display: flex;
     justify-content: center;
-    padding: clamp(12px, 2.6vh, 24px) 16px clamp(12px, 2.2vh, 24px);
+    padding: var(--padT) 16px var(--padB);
     -webkit-text-size-adjust: 100%;
   }
-  /* One screenful, always. The page is a column whose only elastic part is
-     the played chain: everything the player needs to act — the input, its
-     message, Submit and Undo — is outside that scroller, so it cannot be
-     pushed past the fold no matter how long the ladder gets. dvh first so a
-     mobile URL bar does not eat the controls; vh is the fallback. */
-  html, body { height: 100vh; }
-  @supports (height: 100dvh) { html, body { height: 100dvh; } }
-  main { width: 100%; max-width: 24rem; display: flex; flex-direction: column; min-height: 0; max-height: 100%; }
+  /* One screenful when there is room for one, an ordinary scrolling page when
+     there is not. `min-height` never freezes the document at the viewport
+     height, so anything that does not fit lands in the page's own scrollbar
+     instead of inside a box that has none. */
+  html, body { min-height: 100vh; }
+  @supports (height: 100dvh) { html, body { min-height: 100dvh; } }
+  main {
+    width: 100%; max-width: 24rem;
+    display: flex; flex-direction: column;
+    max-height: calc(100vh - var(--padT) - var(--padB));
+  }
+  @supports (height: 100dvh) {
+    main { max-height: calc(100dvh - var(--padT) - var(--padB)); }
+    #chainbox { max-height: calc(100dvh - var(--chrome)); }
+  }
   /* Nothing shrinks by default; the two wrappers and the chain do. (The
-     override selectors are deliberately more specific than the blanket ones.) */
+     override selectors are deliberately more specific than the blanket ones.)
+     The wrappers keep their automatic minimum size — min-height:0 here is what
+     let the ladder shrink under its own content and paint the target word over
+     the status line and the buttons on a short screen. */
   main > *, #play > *, .ladder > * { flex: 0 0 auto; }
-  #play, #play > .ladder { display: flex; flex-direction: column; min-height: 0; flex: 0 1 auto; }
+  #play, #play > .ladder { display: flex; flex-direction: column; flex: 0 1 auto; }
   /* The START label scrolls with the words it labels: pinning it over a
-     scrolled column would put "start" above a rung that is not the start. */
+     scrolled column would put "start" above a rung that is not the start.
+     The floor is one legible rung plus that label — a real length, not a
+     percentage, so the column can never collapse to nothing and take the
+     played ladder with it. Below that the whole page scrolls instead. */
   #chainbox {
     flex: 0 1 auto;
-    min-height: 0;
+    /* The floor: one legible rung plus its label, in a real length, so the
+       column can never collapse and swallow the ladder. The ceiling: whatever
+       the viewport has left after the furniture — without it the wrappers
+       cannot shrink (a scroll container's min-content size is its content, so
+       the ladder would refuse to give up height and push the message line off
+       a 568px screen). Below the floor the page itself scrolls. */
+    min-height: 4.8rem;
+    max-height: calc(100vh - var(--chrome));
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
     scrollbar-color: var(--rule) transparent;
   }
+  #chainbox:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   h1 {
     margin: 0;
@@ -90,6 +123,7 @@
   .ladder::before { left: 4%; }
   .ladder::after  { right: 4%; }
 
+  .lab.won { color: var(--accent); }
   .lab {
     font-size: 0.62rem;
     letter-spacing: 0.24em;
@@ -161,9 +195,6 @@
   #target.solved .hot { color: var(--accent); }
 
   .status { font-size: 0.82rem; margin-top: clamp(10px, 2.2vh, 20px); }
-  /* Focused only programmatically, when the solve takes the input away. */
-  #status:focus { outline: none; }
-  #status:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
   .status.solved { color: var(--accent); }
 
   .controls {
@@ -210,7 +241,7 @@
 
   <form id="play" autocomplete="off" novalidate>
     <div class="ladder">
-      <div id="chainbox">
+      <div id="chainbox" tabindex="0" role="group" aria-label="the ladder so far">
         <p class="lab">start</p>
         <div id="chain"></div>
       </div>
@@ -220,10 +251,10 @@
       </div>
       <div class="hr"></div>
       <div class="rung" id="target"></div>
-      <p class="lab">target</p>
+      <p class="lab" id="targetlab">target</p>
     </div>
 
-    <p class="status" id="status" tabindex="-1">&nbsp;</p>
+    <p class="status" id="status">&nbsp;</p>
 
     <div class="controls">
       <button id="submit" type="submit">Submit</button>
@@ -563,6 +594,7 @@
     inputrow: document.getElementById("inputrow"),
     word: document.getElementById("word"),
     target: document.getElementById("target"),
+    targetlab: document.getElementById("targetlab"),
     status: document.getElementById("status"),
     form: document.getElementById("play"),
     submit: document.getElementById("submit"),
@@ -580,6 +612,10 @@
   var START = PUZ.start.toUpperCase();
   var TARGET = PUZ.target.toUpperCase();
   var chain = [START];
+  // Two different facts, and cycle 1's mistake was conflating them: `solved` is
+  // "this date has been solved", which is what the streak is banked against and
+  // what survives an Undo; `atTarget` is "the chain in front of me ends at the
+  // target right now", which is what the ladder draws.
   var solved = false;
   var justAdded = false;
   var store = {
@@ -633,8 +669,10 @@
       if (!readOnly && saved.puzzle === puzzleDate && legalChain(saved.chain)) {
         chain = saved.chain.map(function (w) { return String(w).toUpperCase(); });
         // The chain is the truth, not the flag beside it: a chain ending at the
-        // target is a solved puzzle however it got into storage.
-        solved = chain[chain.length - 1] === TARGET;
+        // target is a solved puzzle however it got into storage. The stored flag
+        // still counts on its own, because a solve that was then undone is still
+        // a solve of this date.
+        solved = saved.solved || chain[chain.length - 1] === TARGET;
       }
     }
     store.puzzle = puzzleDate;
@@ -673,33 +711,43 @@
       (readOnly ? " · replay, nothing saved" : "");
     el.streak.textContent = "streak " + shownStreak() + " · best " + store.best;
 
-    // On a solve the last rung IS the target line, so it is not drawn twice.
-    var shown = solved ? chain.length - 1 : chain.length;
+    // When the chain ends at the target, the last rung IS the target line, so it
+    // is not drawn twice.
+    var atTarget = chain[chain.length - 1] === TARGET;
+    var shown = atTarget ? chain.length - 1 : chain.length;
     el.chain.textContent = "";
     for (var i = 0; i < shown; i++) {
-      var isNew = justAdded && !solved && i === shown - 1 && i > 0;
+      var isNew = justAdded && !atTarget && i === shown - 1 && i > 0;
       el.chain.appendChild(rungEl(chain[i], i ? chain[i - 1] : null, isNew ? "new" : ""));
     }
 
     el.target.textContent = "";
-    var tprev = solved ? chain[chain.length - 2] : null;
-    var t = rungEl(TARGET, tprev, solved && justAdded ? "new" : "");
+    var tprev = atTarget ? chain[chain.length - 2] : null;
+    var t = rungEl(TARGET, tprev, atTarget && justAdded ? "new" : "");
     while (t.firstChild) el.target.appendChild(t.firstChild);
-    el.target.className = "rung" + (solved ? " solved" : "");
+    el.target.className = "rung" + (atTarget ? " solved" : "");
     el.target.setAttribute("role", "img");
     el.target.setAttribute("aria-label", TARGET);
 
-    el.word.disabled = solved;
-    el.inputrow.className = solved ? "hidden" : "";
-    // Once solved, neither button has anything left to do; disabled says so,
-    // where an enabled button that silently does nothing would not.
-    el.undo.disabled = solved || chain.length <= 1;
-    el.submit.disabled = solved;
+    // The puzzle never takes its own controls away: a solved player can undo and
+    // explore, and the win stands regardless, so there is nothing to disable
+    // beyond Undo at the start word.
+    el.word.disabled = false;
+    el.inputrow.className = "";
+    el.undo.disabled = chain.length <= 1;
+    el.submit.disabled = false;
+
+    // The bottom word doubles as the win: its label reads "solved" once today's
+    // puzzle is done. One word, in the accent, and nothing else moves.
+    el.targetlab.textContent = solved ? "solved" : "target";
+    el.targetlab.className = "lab" + (solved ? " won" : "");
 
     el.status.className = "status" + (solved ? " solved" : "");
-    el.status.textContent = solved
+    el.status.textContent = atTarget
       ? "solved in " + (chain.length - 1) + " moves · shortest " + PUZ.par
-      : "shortest: " + PUZ.par + " moves";
+      : solved
+        ? "solved today · shortest " + PUZ.par
+        : "shortest: " + PUZ.par + " moves";
 
     // The chain column is the only part of the page that scrolls, so the rung
     // nearest the input is the one to keep in view after every change.
@@ -747,13 +795,13 @@
   }
 
   function commit() {
-    if (solved) return;
     var w = normalise();
     if (w.length === 0) {
-      // Not silent: an empty submit used to do nothing at all, which taught the
-      // player the button was dead, and it left the previous attempt's verdict
-      // standing as though it described this one.
-      say("type a four-letter word");
+      // Act, do not talk: the first tap on a phone lands on Submit, and doing
+      // nothing at all taught the player the button was dead. Putting the caret
+      // in the field says where to type without a word of scolding, and the old
+      // verdict goes with it rather than standing as a verdict on this.
+      say("");
       el.word.className = "";
       el.word.focus();
       return;
@@ -772,6 +820,8 @@
     if (w === TARGET) {
       solved = true;
       store.solved = true;
+      // Banked once per date: re-reaching the target after an Undo must not
+      // count twice.
       if (!readOnly && store.lastSolved !== puzzleDate) {
         store.streak = (store.lastSolved === shiftDays(puzzleDate, -1)) ? store.streak + 1 : 1;
         store.lastSolved = puzzleDate;
@@ -781,26 +831,23 @@
     save();
     // The win is announced in the live region, not only printed in #status:
     // otherwise a screen-reader player is never told they solved it.
-    say(solved
+    say(w === TARGET
       ? "added " + w + " · solved in " + (chain.length - 1) + " moves, shortest " + PUZ.par
       : "added " + w);
     el.word.value = "";
     el.word.className = "";
     render();
-    // The input row is gone once solved, so focus has to land somewhere real
-    // rather than falling to BODY.
-    if (solved) { try { el.status.focus(); } catch (e) { /* ignore */ } }
-    else el.word.focus();
+    el.word.focus();
   }
 
   function undo() {
-    // A solve is final: undoing past it un-won a puzzle whose streak had
-    // already been banked, and left a solved screen you could not get back.
-    if (solved || chain.length <= 1) return;
+    if (chain.length <= 1) return;
     var undoHadFocus = document.activeElement === el.undo;
     chain.pop();
     store.chain = chain.slice();
-    store.solved = false;      // lastSolved is untouched: a streak is banked once
+    // store.solved is NOT cleared: the win belongs to the date. Undo walks the
+    // chain back so a player can explore or replay; it does not un-win the day,
+    // and the streak it banked stays banked exactly once.
     save();
     say("");
     render();
