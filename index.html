@@ -25,10 +25,31 @@
     line-height: 1.5;
     display: flex;
     justify-content: center;
-    padding: max(24px, 4vh) 16px 48px;
+    padding: clamp(12px, 2.6vh, 24px) 16px clamp(12px, 2.2vh, 24px);
     -webkit-text-size-adjust: 100%;
   }
-  main { width: 100%; max-width: 24rem; }
+  /* One screenful, always. The page is a column whose only elastic part is
+     the played chain: everything the player needs to act — the input, its
+     message, Submit and Undo — is outside that scroller, so it cannot be
+     pushed past the fold no matter how long the ladder gets. dvh first so a
+     mobile URL bar does not eat the controls; vh is the fallback. */
+  html, body { height: 100vh; }
+  @supports (height: 100dvh) { html, body { height: 100dvh; } }
+  main { width: 100%; max-width: 24rem; display: flex; flex-direction: column; min-height: 0; max-height: 100%; }
+  /* Nothing shrinks by default; the two wrappers and the chain do. (The
+     override selectors are deliberately more specific than the blanket ones.) */
+  main > *, #play > *, .ladder > * { flex: 0 0 auto; }
+  #play, #play > .ladder { display: flex; flex-direction: column; min-height: 0; flex: 0 1 auto; }
+  /* The START label scrolls with the words it labels: pinning it over a
+     scrolled column would put "start" above a rung that is not the start. */
+  #chainbox {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--rule) transparent;
+  }
 
   h1 {
     margin: 0;
@@ -46,14 +67,14 @@
   }
   .tag { font-size: 0.8rem; margin-top: 6px; }
   .meta { font-size: 0.78rem; }
-  #date { margin-top: 18px; }
+  #date { margin-top: clamp(10px, 2vh, 18px); }
   #streak { margin-top: 2px; letter-spacing: 0.02em; }
 
   /* The ladder: two rails, and the words as rungs between them. */
   .ladder {
     position: relative;
-    margin: 26px 0 0;
-    padding: 14px 0 10px;
+    margin: clamp(12px, 2.6vh, 26px) 0 0;
+    padding: clamp(8px, 1.6vh, 14px) 0 clamp(6px, 1.2vh, 10px);
   }
   .ladder::before, .ladder::after {
     content: "";
@@ -119,18 +140,18 @@
   #word:disabled { opacity: 0.4; }
   #inputrow.hidden { display: none; }
 
-  .hr { height: 1px; background: var(--rule); margin: 16px 12% 12px; }
+  .hr { height: 1px; background: var(--rule); margin: clamp(8px, 1.8vh, 16px) 12% clamp(6px, 1.4vh, 12px); }
   #target { color: var(--ink); }
   #target.solved .hot { color: var(--accent); }
 
-  .status { font-size: 0.82rem; margin-top: 20px; }
+  .status { font-size: 0.82rem; margin-top: clamp(10px, 2.2vh, 20px); }
   .status.solved { color: var(--accent); }
 
   .controls {
     display: flex;
     gap: 12px;
     justify-content: center;
-    margin-top: 18px;
+    margin-top: clamp(10px, 2vh, 18px);
   }
   button {
     flex: 1 1 0;
@@ -155,7 +176,7 @@
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   button:disabled { border-color: var(--rule); color: var(--rule); cursor: default; }
 
-  .msg { font-size: 0.85rem; min-height: 1.5em; margin-top: 18px; color: var(--ink); }
+  .msg { font-size: 0.85rem; min-height: 1.5em; margin-top: clamp(10px, 2vh, 18px); color: var(--ink); }
   .msg.warn { color: var(--accent); }
 
 </style>
@@ -169,8 +190,10 @@
 
   <form id="play" autocomplete="off" novalidate>
     <div class="ladder">
-      <p class="lab">start</p>
-      <div id="chain"></div>
+      <div id="chainbox">
+        <p class="lab">start</p>
+        <div id="chain"></div>
+      </div>
       <div id="inputrow">
         <input id="word" type="text" maxlength="4" autocomplete="off" autocorrect="off"
                autocapitalize="characters" spellcheck="false" aria-label="your next word" placeholder="····" autofocus>
@@ -514,6 +537,7 @@
     date: document.getElementById("date"),
     streak: document.getElementById("streak"),
     chain: document.getElementById("chain"),
+    chainbox: document.getElementById("chainbox"),
     inputrow: document.getElementById("inputrow"),
     word: document.getElementById("word"),
     target: document.getElementById("target"),
@@ -645,6 +669,10 @@
     el.status.textContent = solved
       ? "solved in " + (chain.length - 1) + " moves · shortest " + PUZ.par
       : "shortest: " + PUZ.par + " moves";
+
+    // The chain column is the only part of the page that scrolls, so the rung
+    // nearest the input is the one to keep in view after every change.
+    el.chainbox.scrollTop = el.chainbox.scrollHeight;
 
     justAdded = false;
   }
