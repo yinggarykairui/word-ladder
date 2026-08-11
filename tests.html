@@ -1577,6 +1577,44 @@
     });
   }
 
+  /* ------------ the game sits on the page rather than above it ------------ */
+
+  function lastInk(app) {
+    var els = app.doc.querySelectorAll("main *"), i, r, b = 0;
+    for (i = 0; i < els.length; i++) {
+      r = els[i].getBoundingClientRect();
+      if (r.height > 0) b = Math.max(b, r.bottom);
+    }
+    return b;
+  }
+
+  function centring() {
+    group("the page is centred on its cross axis, safely (U4)");
+    return openApp("?d=" + REPLAY, 390, 844).then(function (app) {
+      var top = app.doc.querySelector("h1").getBoundingClientRect().top;
+      var below = app.win.innerHeight - lastInk(app);
+      ok("on a screen with room to spare the game is centred, not floated in the top half",
+         Math.abs(top - below) <= 4 && top > 20,
+         Math.round(top) + "px above, " + Math.round(below) + "px below");
+      app.close();
+      // `safe`: on a screen too short for the game, centring would push the
+      // heading above scrollY 0, where no scrollbar can reach it. Safe
+      // alignment falls back to start and lets the overflow go out of the
+      // bottom, which is where the page's own scrollbar is.
+      return openApp("?d=" + REPLAY, 667, 375);
+    }).then(function (app) {
+      var de = app.doc.documentElement;
+      ok("on a screen too short for it nothing is pushed above the top of the document",
+         app.doc.querySelector("h1").getBoundingClientRect().top >= -0.5 &&
+         de.scrollHeight > de.clientHeight,
+         "h1 top " + Math.round(app.doc.querySelector("h1").getBoundingClientRect().top) +
+         ", page hides " + (de.scrollHeight - de.clientHeight) + "px");
+      ok("and the ladder column still has a rung's worth of height there",
+         $(app, "chainbox").clientHeight >= 44, $(app, "chainbox").clientHeight + "px");
+      app.close();
+    });
+  }
+
   function rotation() {
     group("rotate and resize without a reload (C9)");
     var app0;
@@ -1656,6 +1694,7 @@
       .then(function () { return liveRegion(); })
       .then(function () { return chainEdge(); })
       .then(function () { return messagePlacement(); })
+      .then(function () { return centring(); })
       .then(function () { return rotation(); })
       .then(function () { return heightSweepAll(); });
   }).then(finish, function (err) {

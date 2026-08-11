@@ -40,6 +40,12 @@
     line-height: 1.5;
     display: flex;
     justify-content: center;
+    /* `safe`, and it is doing the work: on a viewport too short for the game
+       the overflow goes out of the bottom, where the page's own scrollbar can
+       reach it, instead of being split top and bottom by the centring — which
+       is how a centred flex item puts its own heading above scrollY 0 and out
+       of reach. */
+    align-items: safe center;
     padding: var(--padT) 16px var(--padB);
     -webkit-text-size-adjust: 100%;
   }
