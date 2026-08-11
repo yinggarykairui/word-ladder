@@ -1531,6 +1531,52 @@
     });
   }
 
+  /* ---- the reason a word was refused, where the refused word is (U3) ----- */
+
+  function messagePlacement() {
+    group("the rejection reason sits with the field, not under the buttons (U3, F2, F3)");
+    return openApp("?d=" + REPLAY, 844, 390).then(function (app) {
+      var doc = app.doc, msg = $(app, "msg"), ctrls = doc.querySelector(".controls");
+      ok("the message line comes before the buttons in the document",
+         !!(msg.compareDocumentPosition(ctrls) & app.win.Node.DOCUMENT_POSITION_FOLLOWING),
+         [].map.call(doc.querySelectorAll("#play > *, main > p"), function (e) {
+           return e.id || e.className; }).join(" > "));
+      // Measured before the move: 189-234px from the bottom of the field
+      // across the sweep, with both buttons in between. 175 is an upper bound
+      // on the 131-168px it measures now, so the two bands cannot overlap.
+      var gap = msg.getBoundingClientRect().top - $(app, "word").getBoundingClientRect().bottom;
+      ok("and nothing focusable is left between the field and the reason it refused a word",
+         gap < 175 && ctrls.getBoundingClientRect().top >= msg.getBoundingClientRect().bottom - 0.5,
+         Math.round(gap) + "px from the bottom of the field");
+      // The column used to swallow the only gesture that could reach the
+      // message on a short screen: overscroll-behavior: contain stops a swipe
+      // that has run past the end of the column from chaining into the page,
+      // and on these viewports the column is most of the screen.
+      ok("the ladder column no longer contains the scroll that has to reach the page",
+         app.win.getComputedStyle($(app, "chainbox")).overscrollBehaviorY === "auto",
+         app.win.getComputedStyle($(app, "chainbox")).overscrollBehaviorY);
+      play(app, "ZZZZ");
+      var de = doc.documentElement, hidden = de.scrollHeight - de.clientHeight;
+      app.win.scrollTo(0, hidden);
+      var r = msg.getBoundingClientRect();
+      ok("a refused word's reason is reachable by scrolling the page at 844x390",
+         msgOf(app) === "ZZZZ isn't in the list" &&
+         r.top >= -0.5 && r.bottom <= app.win.innerHeight + 0.5,
+         "page hides " + hidden + "px, msg at " + Math.round(r.top) + " in " + app.win.innerHeight);
+      app.win.scrollTo(0, 0);
+      $(app, "word").value = "";
+      app.close();
+    }).then(function () {
+      return openApp("?d=" + REPLAY, 390, 460);
+    }).then(function (app) {
+      var r = $(app, "msg").getBoundingClientRect();
+      ok("and it is above the fold on a cold load from 460px of height up",
+         r.top >= -0.5 && r.bottom <= app.win.innerHeight + 0.5,
+         "msg bottom " + Math.round(r.bottom) + " in " + app.win.innerHeight);
+      app.close();
+    });
+  }
+
   function rotation() {
     group("rotate and resize without a reload (C9)");
     var app0;
@@ -1609,6 +1655,7 @@
       .then(function () { return roundTrip(WL); })
       .then(function () { return liveRegion(); })
       .then(function () { return chainEdge(); })
+      .then(function () { return messagePlacement(); })
       .then(function () { return rotation(); })
       .then(function () { return heightSweepAll(); });
   }).then(finish, function (err) {

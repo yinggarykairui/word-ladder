@@ -81,7 +81,15 @@
     min-height: 4.8rem;
     max-height: calc(100vh - var(--chrome));
     overflow-y: auto;
-    overscroll-behavior: contain;
+    /* No `overscroll-behavior: contain`. It was there to stop a swipe over the
+       column from running on into the page, but the page only has anything to
+       scroll on the short viewports where the message line and the buttons are
+       below the fold — and the column fills most of the screen there, so
+       containing the swipe was containing the only gesture that could reach
+       them: 1200px of scroll intent over the column moved the page 0px while
+       the document had 79px to give. Chaining out of a column that has hit its
+       end is the behaviour that gets the player to the reason their word was
+       refused. */
     scrollbar-width: thin;
     scrollbar-color: var(--rule) transparent;
   }
@@ -281,13 +289,19 @@
 
     <p class="status" id="status">&nbsp;</p>
 
+    <!-- Above the buttons, not below them. The reason a word was refused
+         belongs next to the word: with the message under the controls it sat
+         230px from the field at 390x844, with the target block, the status
+         line and both buttons in between, and at 844x390 and 667x375 it was
+         78-93px below the fold at scrollY 0, so the player saw a struck-through
+         word in the accent colour and no reason anywhere on screen. -->
+    <p class="msg" id="msg" role="status" aria-live="polite"></p>
+
     <div class="controls">
       <button id="submit" type="submit">Submit</button>
       <button id="undo" type="button">Undo</button>
     </div>
   </form>
-
-  <p class="msg" id="msg" role="status" aria-live="polite"></p>
 </main>
 
 <script>
