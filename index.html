@@ -292,7 +292,8 @@
              so "s i d e" arrived as SI and a quoted "side" as SID. normalise()
              is the only length rule, and it slices to four letters. -->
         <input id="word" type="text" autocomplete="off" autocorrect="off"
-               autocapitalize="characters" spellcheck="false" aria-label="your next word" placeholder="····">
+               autocapitalize="characters" spellcheck="false" aria-label="your next word"
+               aria-describedby="msg" placeholder="····">
       </div>
       <div class="hr"></div>
       <div class="rung" id="target"></div>
@@ -925,10 +926,21 @@
     return v;
   }
 
+  // A refused word had a visual state and no programmatic one: the strike
+  // through the word is the only thing that said it was refused, and a strike
+  // is not an error state to anything that is not looking at it. aria-invalid
+  // is set and cleared with the class, never one without the other, and the
+  // field's aria-describedby points at #msg so the reason travels with it.
+  function markBad(bad) {
+    el.word.className = bad ? "bad" : "";
+    if (bad) el.word.setAttribute("aria-invalid", "true");
+    else el.word.removeAttribute("aria-invalid");
+  }
+
   function reject(m) {
     say(m, true);
     // Struck through, the refused word cannot be misread as an accepted rung.
-    el.word.className = "bad";
+    markBad(true);
     el.word.focus();
     try { el.word.select(); } catch (e) { /* ignore */ }
   }
@@ -946,7 +958,7 @@
       // verdict that was earned stays: a second Enter used to wipe "solved in 3
       // moves" out of the live region before anyone had read it.
       if (/warn/.test(el.msg.className)) say("");
-      el.word.className = "";
+      markBad(false);
       el.word.focus();
       return;
     }
@@ -991,7 +1003,7 @@
       ? "added " + w + " · solved in " + (chain.length - 1) + " moves"
       : "added " + w);
     el.word.value = "";
-    el.word.className = "";
+    markBad(false);
     render();
     // On the winning move the field is put away under the player's caret, so
     // focus goes to the one control that still has a move in it rather than
@@ -1016,7 +1028,7 @@
     // The strike-through is the visible half of a verdict the message line has
     // just dropped; left behind it is a refusal with no reason, on a word the
     // shortened chain may now accept.
-    el.word.className = "";
+    markBad(false);
     render();
     // Disabling the button that holds focus drops activeElement to BODY.
     if (leavingTarget || (undoHadFocus && el.undo.disabled)) el.word.focus();
@@ -1043,11 +1055,11 @@
   });
   el.word.addEventListener("compositionend", function () {
     composing = false;
-    el.word.className = "";
+    markBad(false);
     normalise();
   });
   el.word.addEventListener("input", function (e) {
-    el.word.className = "";
+    markBad(false);
     if (composing || (e && e.isComposing)) return;
     normalise();
   });

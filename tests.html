@@ -585,6 +585,25 @@
                   $(app, "msg").childNodes.length <= 1;
          }()), msgOf(app));
       $(app, "word").value = "";
+      // The strike-through is a state only an eye can read. A refused field has
+      // to say so programmatically too, and point at the reason.
+      ok("a refused word puts the field into a programmatic error state that names its own reason",
+         (function () {
+           $(app, "word").value = "";
+           play(app, "ZZZZ");
+           var w = $(app, "word");
+           var described = app.doc.getElementById(w.getAttribute("aria-describedby") || "");
+           return w.getAttribute("aria-invalid") === "true" && w.className === "bad" &&
+                  described === $(app, "msg") && described.textContent === msgOf(app);
+         }()), $(app, "word").getAttribute("aria-invalid") + " / describedby " +
+               $(app, "word").getAttribute("aria-describedby"));
+      ok("and typing again clears the error state with the strike-through, not after it",
+         (function () {
+           type(app, "SID");
+           var w = $(app, "word");
+           return w.getAttribute("aria-invalid") === null && w.className === "";
+         }()), String($(app, "word").getAttribute("aria-invalid")));
+      $(app, "word").value = "";
       ok("a word already in the chain is refused as already used",
          (function () { play(app, START); return msgOf(app) === "already used" &&
                                                   chainWords(app).length === 2; }()), msgOf(app));
