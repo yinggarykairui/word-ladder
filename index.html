@@ -1044,14 +1044,14 @@
     }
     save();
     // The win is announced in the live region, not only printed in #status:
-    // otherwise a screen-reader player is never told they solved it. The par
-    // is not repeated here — the status line one element above says "solved in
-    // N moves · best possible P" and the message would be the third telling of
-    // the same number in three different shapes. It also wrapped to two lines
-    // at 320px, which put 3px of the finished board into a scrollbar.
-    say(w === TARGET
-      ? "added " + w + " · solved in " + (chain.length - 1) + " moves"
-      : "added " + w);
+    // #status is not a live region, so a message that says nothing about the
+    // win leaves a screen-reader player untold they solved it. But the count
+    // belongs to #status, which is 36.6px above this line and already reads
+    // "solved in N moves · best possible P" — printing "solved in N moves"
+    // here as well stated the same result twice on one screen. The count goes,
+    // the word stays: one bare "solved" is the shortest thing that still
+    // announces the win, and it is not a second telling of a number.
+    say(w === TARGET ? "added " + w + " · solved" : "added " + w);
     el.word.value = "";
     markBad(false);
     render();

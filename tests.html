@@ -629,8 +629,17 @@
       ok("the final legal move reaches the target and flips the solved state",
          $(app, "status").textContent === "solved in " + (path.length - 1) + " moves · best possible " + WL.puzzle.par &&
          $(app, "targetlab").textContent === "solved" &&
-         msgOf(app) === "added " + TARGET + " · solved in " + (path.length - 1) + " moves",
+         msgOf(app) === "added " + TARGET + " · solved",
          $(app, "status").textContent + " / " + msgOf(app));
+      // The win screen said "solved in N moves" twice, 36.6px apart. The count
+      // is the status line's; the message keeps the bare word, because #status
+      // is not a live region and a message with nothing about the win in it
+      // never tells a screen-reader player they won.
+      ok("and the move count is said once on the win screen, not twice (U19)",
+         msgOf(app).indexOf(" moves") === -1 &&
+         msgOf(app).indexOf("solved") !== -1 &&
+         $(app, "status").textContent.indexOf("solved in " + (path.length - 1) + " moves") === 0,
+         msgOf(app));
       // "shortest: 3 moves" read as a move allowance, and the same number was
       // said three ways on one screen. One phrasing, and only where it earns
       // its place.
@@ -640,7 +649,8 @@
          msgOf(app).indexOf("best possible") === -1,
          $(app, "status").textContent + " / " + msgOf(app));
       ok("the win is announced in the live region, not only printed in the status line",
-         msgOf(app).indexOf("solved in") !== -1 && $(app, "msg").getAttribute("aria-live") === "polite",
+         msgOf(app).indexOf("solved") !== -1 && $(app, "msg").getAttribute("aria-live") === "polite" &&
+         $(app, "status").getAttribute("aria-live") === null,
          msgOf(app));
       // Was: "focus stays in the field on the winning move, and the field is
       // still there". The field is no longer there on the winning move — a
