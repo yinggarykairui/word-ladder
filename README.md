@@ -4,7 +4,7 @@ A new four-letter word ladder every day: change one letter at a time to get from
 
 ![screenshot](screenshot.png)
 
-*Two moves into the puzzle for 2026-08-10: START at the top, TARGET behind a rule at the bottom, the played chain (WIDE, SIDE, SITE) filling the gap, and on each rung the letter that changed from the rung above set in the accent colour.*
+*Two moves into the puzzle for 2026-08-10: START at the top, TARGET behind a rule at the bottom, the played chain (WIDE, SIDE, SITE) filling the gap, and on every rung below the start, the letter that changed from the rung above set bold and in the accent colour.*
 
 **[Live demo](https://yinggarykairui.github.io/word-ladder/)**
 
