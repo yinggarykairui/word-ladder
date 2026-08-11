@@ -555,7 +555,9 @@
   /* ---------------------------- storage ------------------------------- */
 
   function isCount(n) {
-    return typeof n === "number" && isFinite(n) && n >= 0 && Math.floor(n) === n;
+    // Safe-integer, not just integral: 1e308 is a finite whole number, and a
+    // hand-written blob carrying it rendered "streak 1e+308 · best 1e+308".
+    return typeof n === "number" && n >= 0 && Number.isSafeInteger(n);
   }
 
   // Every read is guarded: a corrupt or foreign blob is treated as absent.

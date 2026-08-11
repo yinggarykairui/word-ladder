@@ -726,6 +726,11 @@
         ["a future schema", '{"v":99,"streak":3,"best":3}'],
         ["wrong types", '{"v":1,"streak":"4","best":true}'],
         ["1e999 (Infinity)", '{"v":1,"streak":1e999,"best":1}'],
+        // Finite and whole, so the old integral check waved it through and the
+        // header read "streak 1e+308 · best 1e+308".
+        ["1e308 (finite, past the safe integers)", '{"v":1,"streak":1e308,"best":1e308}'],
+        ["Number.MAX_SAFE_INTEGER + 2", '{"v":1,"streak":9007199254740994,"best":1}'],
+        ["a negative count", '{"v":1,"streak":-1,"best":3}'],
         ["a lone surrogate", "\uD800"]
       ];
       var chainP = Promise.resolve();
@@ -743,7 +748,7 @@
       });
       return chainP.then(function () {
         return errorCaptureControl().then(function (errors) {
-          ok("(e-control) the error capture sees a load-time throw — the eight rows above are not blind",
+          ok("(e-control) the error capture sees a load-time throw — the " + bad.length + " rows above are not blind",
              errors.length === 1 && errors[0].indexOf("deliberate") !== -1,
              JSON.stringify(errors));
         });
@@ -751,7 +756,7 @@
     }).then(function () {                             // (e-control) a good blob must read back
       seed(JSON.stringify({ v: 1, puzzle: null, chain: null, solved: false, lastSolved: yest, streak: 6, best: 11 }));
       return openApp("", 390, 844).then(function (app) {
-        ok("(e-control) a well-formed blob IS read back — the eight rows above are not vacuous",
+        ok("(e-control) a well-formed blob IS read back — the corrupt-blob rows above are not vacuous",
            header(app) === "streak 6 · best 11", header(app));
         app.close();
       });
