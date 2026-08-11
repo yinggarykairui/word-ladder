@@ -499,6 +499,35 @@
                                                   msgOf(app) === "added " + NEXT; }()),
          chainWords(app).join(" ") + " / " + msgOf(app));
       ok("the field is cleared after a word is accepted", $(app, "word").value === "");
+      // A second Enter on an empty field used to wipe the line — including
+      // "solved in N moves", the only place the win is announced out loud.
+      ok("a second Enter on an empty field leaves the verdict it just earned standing",
+         (function () {
+           var earned = msgOf(app);
+           submit(app);
+           submit(app);
+           return earned === "added " + NEXT && msgOf(app) === earned &&
+                  app.doc.activeElement === $(app, "word");
+         }()), JSON.stringify(msgOf(app)));
+      // aria-live fires on a change. The same refusal twice running has to be
+      // two changes, or the second one is silent to a screen reader.
+      ok("the same refusal twice is announced twice: the live region is emptied between them",
+         (function () {
+           var mo = new app.win.MutationObserver(function () {});
+           mo.observe($(app, "msg"), { childList: true, characterData: true, subtree: true });
+           play(app, "ZZZZ");
+           mo.takeRecords();
+           $(app, "word").value = "";
+           play(app, "ZZZZ");
+           var recs = mo.takeRecords();
+           mo.disconnect();
+           var emptied = false, i;
+           for (i = 0; i < recs.length; i++) {
+             if (recs[i].removedNodes.length && !recs[i].addedNodes.length) emptied = true;
+           }
+           return msgOf(app) === "ZZZZ isn't in the list" && recs.length >= 2 && emptied;
+         }()), msgOf(app));
+      $(app, "word").value = "";
       ok("the message line is replaced, never appended to",
          (function () {
            play(app, "ZZZZ");

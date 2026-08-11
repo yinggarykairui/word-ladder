@@ -770,7 +770,14 @@
     justAdded = false;
   }
 
-  function say(m, warn) { el.msg.textContent = m; el.msg.className = warn ? "msg warn" : "msg"; }
+  // aria-live announces a change, and the same refusal twice running is not one:
+  // submitting ZZZZ twice left the region byte-identical and the second refusal
+  // silent. Emptying it first makes every verdict a change, including a repeat.
+  function say(m, warn) {
+    el.msg.textContent = "";
+    el.msg.textContent = m;
+    el.msg.className = warn ? "msg warn" : "msg";
+  }
 
   /* ---------------------------- play ---------------------------------- */
 
@@ -821,9 +828,11 @@
     if (w.length === 0) {
       // Act, do not talk: the first tap on a phone lands on Submit, and doing
       // nothing at all taught the player the button was dead. Putting the caret
-      // in the field says where to type without a word of scolding, and the old
-      // verdict goes with it rather than standing as a verdict on this.
-      say("");
+      // in the field says where to type without a word of scolding. A refusal
+      // still standing goes with it, since it is not a verdict on this — but a
+      // verdict that was earned stays: a second Enter used to wipe "solved in 3
+      // moves" out of the live region before anyone had read it.
+      if (/warn/.test(el.msg.className)) say("");
       el.word.className = "";
       el.word.focus();
       return;
