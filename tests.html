@@ -1475,6 +1475,62 @@
     });
   }
 
+  /* --------- the top edge of the ladder column says it is an edge --------- */
+
+  function chainEdge() {
+    group("the ladder column's top edge and its ceiling (U2, U15)");
+    return openApp("?d=" + REPLAY, 320, 568).then(function (app) {
+      var cb = $(app, "chainbox"), i, walk = longWalk(app, 10);
+      ok("a column with nothing hidden above the top edge is not faded",
+         cb.className.indexOf("faded") === -1 && cb.scrollTop === 0, JSON.stringify(cb.className));
+      for (i = 0; i < walk.length; i++) play(app, walk[i]);
+      $(app, "word").value = "";
+      ok("a column scrolled off its own top is faded, so the cut-off rungs read as cut off",
+         cb.scrollTop > 0 && cb.className.indexOf("faded") !== -1 &&
+         app.win.getComputedStyle(cb).maskImage.indexOf("linear-gradient") === 0,
+         Math.round(cb.scrollTop) + "px above, " + JSON.stringify(cb.className));
+      cb.scrollTop = 0;
+      cb.dispatchEvent(new app.win.Event("scroll"));
+      ok("scrolling the column back to the start word takes the fade off again",
+         cb.className.indexOf("faded") === -1 &&
+         app.win.getComputedStyle(cb).maskImage === "none", JSON.stringify(cb.className));
+      // A mask clips everything the element paints, the outline included, so
+      // the fade stands down while the column is the focused control.
+      cb.scrollTop = cb.scrollHeight;
+      cb.dispatchEvent(new app.win.Event("scroll"));
+      cb.focus();
+      ok("the fade never clips the focus outline: it is off while the column is focused",
+         !cb.matches(":focus-visible") ||
+         app.win.getComputedStyle(cb).maskImage === "none",
+         "focus-visible " + cb.matches(":focus-visible") + ", mask " +
+         app.win.getComputedStyle(cb).maskImage.slice(0, 24));
+      // The ceiling: --chrome budgets for an input row that is not on the page
+      // at the target.
+      undoAll(app);
+      var path = app.WL.pathOf(app.WL.puzzle).map(function (x) { return x.toUpperCase(); });
+      // One move short of the target: the column is against its ceiling, with
+      // the input row still on the page.
+      for (i = 1; i < path.length - 1; i++) play(app, path[i]);
+      $(app, "word").value = "";
+      var mid = cb.clientHeight;
+      play(app, path[path.length - 1]);
+      var de = app.doc.documentElement;
+      ok("a finished ladder gets the 64px the input row is no longer using",
+         cb.clientHeight >= mid + 63 && cb.classList.contains("roomier"),
+         mid + "px -> " + cb.clientHeight + "px");
+      ok("and taking it does not push the page into a scrollbar at 320x568",
+         de.scrollHeight <= de.clientHeight + 1, de.scrollHeight + " <= " + de.clientHeight);
+      ok("the room goes back when Undo brings the input row back",
+         (function () {
+           $(app, "undo").click();
+           return !cb.classList.contains("roomier") && cb.clientHeight === mid;
+         }()), cb.clientHeight + "px");
+      ok("no window errors or console.error across the column rows",
+         app.errors.length === 0, app.errors.slice(0, 2).join(" | ") || "0 errors");
+      app.close();
+    });
+  }
+
   function rotation() {
     group("rotate and resize without a reload (C9)");
     var app0;
@@ -1552,6 +1608,7 @@
       .then(function () { return layoutAndTaps(390, 844); })
       .then(function () { return roundTrip(WL); })
       .then(function () { return liveRegion(); })
+      .then(function () { return chainEdge(); })
       .then(function () { return rotation(); })
       .then(function () { return heightSweepAll(); });
   }).then(finish, function (err) {

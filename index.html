@@ -86,6 +86,28 @@
     scrollbar-color: var(--rule) transparent;
   }
   #chainbox:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* A column scrolled up its own length looked like a column that starts
+     there: the scrollbar is an overlay (offsetWidth == clientWidth, so it
+     reserves no room) and it paints at 1.40:1 when it paints at all, and at
+     320px the clipped tops of the hidden rungs read as a second dashed rule
+     rather than as letters. The fade says "there is more above" in the one
+     way that costs no layout. Only while there is something above the top
+     edge — an always-on fade is a decoration that lies on a full column — and
+     never while the column is focused, because a mask clips everything the
+     element paints, the focus outline included. */
+  #chainbox.faded:not(:focus-visible) {
+    -webkit-mask-image: linear-gradient(#0000, #000 14px);
+    mask-image: linear-gradient(#0000, #000 14px);
+  }
+  /* --chrome budgets for the input row at every state, and at the target the
+     row is not on the page: 64px of it (a 16px gap and a 48px field) is spare
+     paper under a ladder that is being clipped for want of exactly that.
+     Measured at 320x568 with the puzzle solved: 91px of finished ladder cut
+     off above, 82px of empty paper below the message line. */
+  #chainbox.roomier { max-height: calc(100vh - var(--chrome) + 64px); }
+  @supports (height: 100dvh) {
+    #chainbox.roomier { max-height: calc(100dvh - var(--chrome) + 64px); }
+  }
 
   h1 {
     margin: 0;
@@ -757,6 +779,9 @@
     // brings the row, the caret and Submit straight back.
     el.word.disabled = false;
     el.inputrow.className = atTarget ? "hidden" : "";
+    // The row is off the page at the target, so the ladder may have the height
+    // --chrome is still holding for it.
+    el.chainbox.classList.toggle("roomier", atTarget);
     el.undo.disabled = chain.length <= 1;
     el.submit.disabled = atTarget;
 
@@ -799,6 +824,12 @@
   function fitColumn() {
     el.chainbox.scrollTop = el.chainbox.scrollHeight;
     el.chainbox.tabIndex = el.chainbox.scrollHeight > el.chainbox.clientHeight ? 0 : -1;
+    fade();
+  }
+
+  // The fade at the top edge is on exactly while there is something above it.
+  function fade() {
+    el.chainbox.classList.toggle("faded", el.chainbox.scrollTop > 0);
   }
 
   // aria-live announces a change, and the same refusal twice running is not one:
@@ -994,6 +1025,9 @@
   el.undo.addEventListener("click", undo);
   // A rotation changes how much of the ladder fits without changing the ladder.
   window.addEventListener("resize", fitColumn);
+  // Scrolled by hand, by the arrow keys or by the wheel: the same edge, the
+  // same question.
+  el.chainbox.addEventListener("scroll", fade);
 
   render();
   // A board that loads already at the target has no field to put the caret in;
