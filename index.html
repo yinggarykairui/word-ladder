@@ -915,9 +915,19 @@
   // gain. Either way the line holds the newest message the moment say()
   // returns, and a say() that lands during the blank frame owns the line from
   // there — the guards below stand down rather than write over it.
-  var sayFrame = 0;
+  //
+  // The blank frame is the one piece of async in the file, and it is the only
+  // thing standing between a refusal and an empty message line: if the callback
+  // that puts the words back never runs, the line the player is reading stays
+  // blank. No real browser lifecycle drops a pending rAF callback — a
+  // backgrounded tab queues them and runs them on the way back — but the cost
+  // of being wrong about that is a blank verdict, and the cost of insuring
+  // against it is one timer. Both are armed, whichever fires first restores the
+  // line and cancels the other.
+  var sayFrame = 0, sayTimer = 0;
   function say(m, warn) {
     if (sayFrame) { cancelAnimationFrame(sayFrame); sayFrame = 0; }
+    if (sayTimer) { clearTimeout(sayTimer); sayTimer = 0; }
     var repeat = m !== "" && el.msg.textContent === m;
     el.msg.textContent = "";
     el.msg.textContent = m;
@@ -927,10 +937,13 @@
       sayFrame = 0;
       if (el.msg.textContent !== m) return;   // a later say() owns the line
       el.msg.textContent = "";
-      sayFrame = requestAnimationFrame(function () {
-        sayFrame = 0;
+      function restore() {
+        if (sayFrame) { cancelAnimationFrame(sayFrame); sayFrame = 0; }
+        if (sayTimer) { clearTimeout(sayTimer); sayTimer = 0; }
         if (el.msg.textContent === "") el.msg.textContent = m;
-      });
+      }
+      sayFrame = requestAnimationFrame(restore);
+      sayTimer = setTimeout(restore, 100);
     });
   }
 

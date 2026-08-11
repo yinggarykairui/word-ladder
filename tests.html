@@ -1507,9 +1507,33 @@
         ok("a verdict that differs from the one on the line is never blanked",
            seen.join("|") === ["ZZZZ isn't in the list", "ZZZZ isn't in the list",
                                "ZZZZ isn't in the list"].join("|"), seen.join(" | "));
-        ok("no window errors or console.error across the live-region rows",
-           app0.errors.length === 0, app0.errors.slice(0, 2).join(" | ") || "0 errors");
-        app0.close();
+        // C11: the blank frame is the one piece of async in the file, and the
+        // rung it stands on is a callback firing. Drop the second one — no
+        // real browser lifecycle does, but nothing in the code said so — and
+        // the line the player is reading stayed blank for good. The timer is
+        // the backstop; this is the only way to see it work.
+        $(app0, "word").value = "";
+        play(app0, "ZZZZ");                 // a repeat: let it blink out cleanly
+        return frames(app0, 3).then(function () {
+          var realRAF = app0.win.requestAnimationFrame, calls = 0;
+          app0.win.requestAnimationFrame = function (fn) {
+            calls++;
+            // The first callback (blank the line) runs; the second (put the
+            // words back) is scheduled and never called.
+            return realRAF.call(app0.win, calls === 1 ? fn : function () {});
+          };
+          $(app0, "word").value = "";
+          play(app0, "ZZZZ");               // the repeat whose restore is dropped
+          return new Promise(function (res) { setTimeout(res, 260); }).then(function () {
+            app0.win.requestAnimationFrame = realRAF;
+            ok("a dropped animation frame cannot leave the message line blank (C11)",
+               msgOf(app0) === "ZZZZ isn't in the list" && calls === 2,
+               JSON.stringify(msgOf(app0)) + " after " + calls + " frames asked for");
+            ok("no window errors or console.error across the live-region rows",
+               app0.errors.length === 0, app0.errors.slice(0, 2).join(" | ") || "0 errors");
+            app0.close();
+          });
+        });
       });
     });
   }
