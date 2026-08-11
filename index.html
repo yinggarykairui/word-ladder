@@ -775,6 +775,12 @@
     // nearest the input is the one to keep in view after every change.
     el.chainbox.scrollTop = el.chainbox.scrollHeight;
 
+    // It is a tab stop only while it has something to scroll: on a fresh puzzle
+    // one Shift-Tab out of the input landed on a column with nothing hidden in
+    // it and no way to tell that from a dead stop. The order the README
+    // promises — input, Submit, Undo — is untouched either way.
+    el.chainbox.tabIndex = el.chainbox.scrollHeight > el.chainbox.clientHeight ? 0 : -1;
+
     justAdded = false;
   }
 

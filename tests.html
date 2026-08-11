@@ -367,19 +367,29 @@
              ", par " + WL.puzzle.par);
 
     group("focus order");
-    ok("tab order is the ladder, then input, then Submit, then Undo, with nothing focusable between the three controls",
+    // On a fresh puzzle the ladder column holds one rung and has nothing to
+    // scroll, so it is not a tab stop: a Shift-Tab out of the input used to
+    // land there with nothing hidden in it and no way to tell that from a dead
+    // stop. It becomes one the moment it overflows (rows in the sweep below).
+    ok("tab order is the input, then Submit, then Undo, with nothing focusable between the three controls",
        (function () {
          var f = app.doc.querySelectorAll(
            'input, button, a[href], select, textarea, [tabindex]:not([tabindex="-1"])');
-         return f.length === 4 && f[0].id === "chainbox" && f[1].id === "word" &&
-                f[2].id === "submit" && f[3].id === "undo";
+         return f.length === 3 && f[0].id === "word" &&
+                f[1].id === "submit" && f[2].id === "undo";
        }()), (function () {
          var f = app.doc.querySelectorAll('input, button, a[href], select, textarea, [tabindex]:not([tabindex="-1"])');
          return [].map.call(f, function (e) { return e.id; }).join(" > ");
        }()));
-    ok("the ladder scroller carries an accessible name, so the tab stop says what it is",
+    ok("the ladder column is not a tab stop while there is nothing in it to scroll",
+       $(app, "chainbox").tabIndex === -1 &&
+       $(app, "chainbox").scrollHeight <= $(app, "chainbox").clientHeight,
+       "tabIndex " + $(app, "chainbox").tabIndex + ", " +
+       $(app, "chainbox").scrollHeight + " in " + $(app, "chainbox").clientHeight + "px");
+    ok("the ladder scroller carries an accessible name, so the tab stop says what it is when it is one",
        $(app, "chainbox").getAttribute("aria-label") === "the ladder so far" &&
-       $(app, "chainbox").tabIndex === 0, $(app, "chainbox").getAttribute("aria-label"));
+       $(app, "chainbox").getAttribute("role") === "group",
+       $(app, "chainbox").getAttribute("aria-label"));
   }
 
   function inputMatrix() {
@@ -903,11 +913,21 @@
 
       // B1: the whole feedback loop stays on screen however long the ladder gets.
       var walk = longWalk(app, 10);
+      var freshTab = $(app, "chainbox").tabIndex;
+      var freshOverflow = $(app, "chainbox").scrollHeight > $(app, "chainbox").clientHeight;
       checkAt(0, off);
       for (i = 0; i < walk.length; i++) { play(app, walk[i]); checkAt(i + 1, off); }
       ok("input, message, Submit and Undo stay in the viewport across a " + walk.length +
          "-rung wander at " + label, off.length === 0,
          off.slice(0, 4).join(" ") || (walk.length + 1) + " chain lengths, none off screen");
+      // The tab stop follows the scrollbar: absent when the column holds
+      // everything, there the moment a rung is hidden above the fold.
+      ok("the ladder column is a tab stop exactly while it has something to scroll at " + label,
+         freshTab === (freshOverflow ? 0 : -1) &&
+         $(app, "chainbox").scrollHeight > $(app, "chainbox").clientHeight &&
+         $(app, "chainbox").tabIndex === 0,
+         "fresh " + freshTab + " (overflow " + freshOverflow + "), after " + walk.length +
+         " rungs " + $(app, "chainbox").tabIndex);
 
       undoAll(app);
       var path = app.WL.pathOf(app.WL.puzzle).map(function (x) { return x.toUpperCase(); });
