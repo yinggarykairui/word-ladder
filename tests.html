@@ -198,6 +198,34 @@
     inp.value = text;
     inp.dispatchEvent(new app.win.Event("input", { bubbles: true }));
   }
+  // A real Ctrl+V, not an assignment to .value: the clipboard text reaches the
+  // field through the UA's own insertion, which is where a maxlength on the
+  // field would cut it — assigning .value skips that rule and cannot see it.
+  function paste(app, text) {
+    var inp = $(app, "word");
+    inp.focus();
+    var dt = new app.win.DataTransfer();
+    dt.setData("text/plain", text);
+    var ev = new app.win.ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: dt });
+    inp.dispatchEvent(ev);
+    if (!ev.defaultPrevented) {
+      var a = inp.selectionStart, b = inp.selectionEnd, v = inp.value;
+      if (typeof a !== "number") { a = v.length; b = v.length; }
+      var room = inp.maxLength >= 0 ? inp.maxLength - (v.length - (b - a)) : text.length;
+      inp.value = v.slice(0, a) + text.slice(0, Math.max(0, room)) + v.slice(b);
+    }
+    inp.dispatchEvent(new app.win.InputEvent("input", { bubbles: true, inputType: "insertFromPaste" }));
+  }
+  // One keystroke at a time, the way a person types it.
+  function typeKeys(app, text) {
+    var inp = $(app, "word"), i;
+    inp.value = "";
+    inp.focus();
+    for (i = 0; i < text.length; i++) {
+      inp.value = inp.value + text.charAt(i);
+      inp.dispatchEvent(new app.win.InputEvent("input", { bubbles: true, inputType: "insertText", data: text.charAt(i) }));
+    }
+  }
   function submit(app) { $(app, "submit").click(); }
   function play(app, text) { type(app, text); submit(app); }
   function undoAll(app) {
@@ -392,10 +420,26 @@
       // longer), if the fold breaks (the word would not be recognised), or if
       // the rule table stops running on pasted text (no verdict).
       var blob = twoAway.split("").join("3! 😀-中") + "1234567890!@#$%^&*() 😀-中".repeat(200);
-      type(app, blob);
+      $(app, "word").value = "";
+      paste(app, blob);
       ok("a 5,000-character pasted blob leaves exactly its first four letters in the field",
          $(app, "word").value === twoAway,
          blob.length + " chars in, " + JSON.stringify($(app, "word").value) + " out");
+      // The three shapes a maxlength on the field used to eat before the fold
+      // could run: spaced letters arrived as SI, a quoted word as SID.
+      [["s i d e", "SIDE"], ['"side"', "SIDE"], ["sideways", "SIDE"], ["  side  ", "SIDE"]].forEach(function (c) {
+         $(app, "word").value = "";
+         paste(app, c[0]);
+         ok("a real paste of " + JSON.stringify(c[0]) + " folds to " + c[1],
+            $(app, "word").value === c[1], JSON.stringify($(app, "word").value));
+      });
+      ok("typing eight letters one key at a time still stops at four",
+         (function () { typeKeys(app, "sidewalk"); return $(app, "word").value === "SIDE"; }()),
+         JSON.stringify($(app, "word").value));
+      ok("the field carries no maxlength, so nothing is cut before the fold sees it",
+         !$(app, "word").hasAttribute("maxlength"), $(app, "word").getAttribute("maxlength") || "absent");
+      $(app, "word").value = "";
+      paste(app, blob);
       submit(app);
       ok("the pasted blob is judged as the word it folds to, and grows no chain",
          msgOf(app) === "change exactly one letter" && chainWords(app).length === 1,

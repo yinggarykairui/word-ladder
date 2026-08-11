@@ -246,7 +246,10 @@
         <div id="chain"></div>
       </div>
       <div id="inputrow">
-        <input id="word" type="text" maxlength="4" autocomplete="off" autocorrect="off"
+        <!-- No maxlength: it truncates a real paste before the fold can see it,
+             so "s i d e" arrived as SI and a quoted "side" as SID. normalise()
+             is the only length rule, and it slices to four letters. -->
+        <input id="word" type="text" autocomplete="off" autocorrect="off"
                autocapitalize="characters" spellcheck="false" aria-label="your next word" placeholder="····">
       </div>
       <div class="hr"></div>
@@ -767,8 +770,10 @@
   /* ---------------------------- play ---------------------------------- */
 
   // One rule disposes of case, digits, punctuation, emoji, whitespace, pasted
-  // blobs and typed markup. Accents are folded rather than dropped, so an
-  // accent keyboard typing "sîdé" gets SIDE and not SD.
+  // blobs and typed markup — and it is the only one, because maxlength would
+  // cut a paste down to four characters before this ever saw it. Accents are
+  // folded rather than dropped, so an accent keyboard typing "sîdé" gets SIDE
+  // and not SD.
   var COMBINING = /[\u0300-\u036f]/g;
   function fold(raw) {
     var s = String(raw);
