@@ -348,7 +348,7 @@
        badPar.length === 0, badPar.slice(0, 3).join(" ") || Object.keys(hows).map(function (k) {
          return k + " x" + hows[k]; }).join(", "));
     // Recorded, not asserted as coverage: on the shipped word list the first
-    // branch has never failed to find a pair — 3,000 dates from 2020 to 2028 all
+    // branch has never failed to find a pair — 3,288 dates from 2020 to 2028 all
     // return "distance 3-5" — so the widen branch, the sorted-scan fallback and
     // the no-puzzle guard are unreachable insurance, and the band row above only
     // ever exercises 3-5. Reaching them needs a different word list, which would

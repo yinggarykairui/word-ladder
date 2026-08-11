@@ -24,7 +24,7 @@
        vh-scaled). This expression is a deliberate UPPER bound on that
        measurement — between 2.6px and 16px above it everywhere — because
        over-estimating costs a few pixels of ladder and under-estimating puts
-       the message line back under the fold. tests.html asserts the bound at
+       the buttons back under the fold. tests.html asserts the bound at
        eight viewports, so an edit to the rhythm cannot drift it silently. */
     --chrome: clamp(436px, calc(16vh + 364px), 520px);
     --rung-font: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
@@ -246,7 +246,6 @@
      control boundary, so it clears 3:1 — the field has to read as a field
      before it is focused, because a phone will not autofocus it. */
   #word::placeholder { color: var(--muted); opacity: 1; }
-  #word:disabled { opacity: 0.4; }
   /* A refused word is still in the field; struck through, it cannot be
      misread as a rung that was accepted. */
   #word.bad { color: var(--accent); text-decoration: line-through; text-decoration-thickness: 2px; }
@@ -595,7 +594,7 @@
 
     // Unreachable insurance, stated plainly rather than implied: on the shipped
     // word list the first phase has never failed. Every date from 2020 to 2028
-    // — 3,000 of them — comes back "distance 3-5", so the widen phase below,
+    // — 3,288 of them — comes back "distance 3-5", so the widen phase below,
     // the sorted-scan fallback and the `if (!PUZ)` guard have never executed
     // outside a test built on a different list. They stay because the list is
     // editable and a sparser one would need them; they are not covered.
