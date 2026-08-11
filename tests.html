@@ -1496,6 +1496,28 @@
          cb.scrollTop > 0 && cb.className.indexOf("faded") !== -1 &&
          app.win.getComputedStyle(cb).maskImage.indexOf("linear-gradient") === 0,
          Math.round(cb.scrollTop) + "px above, " + JSON.stringify(cb.className));
+      // The changed letter measured 2.54:1 against the ink letters beside it —
+      // the comparison a player makes — so colour was carrying it alone.
+      ok("the changed letter is bolder than the letters beside it, and no rung gets wider for it at 320px",
+         (function () {
+           var hot = app.doc.querySelector("#chain .rung .hot");
+           if (!hot) return false;
+           var plain = null, kids = hot.parentNode.children, k;
+           for (k = 0; k < kids.length; k++) if (kids[k] !== hot) { plain = kids[k]; break; }
+           var over = 0, rungs = app.doc.querySelectorAll(".rung");
+           for (k = 0; k < rungs.length; k++) {
+             if (rungs[k].scrollWidth > rungs[k].clientWidth + 0.5) over++;
+           }
+           return parseInt(app.win.getComputedStyle(hot).fontWeight, 10) >= 700 &&
+                  parseInt(app.win.getComputedStyle(hot).fontWeight, 10) >
+                  parseInt(app.win.getComputedStyle(plain).fontWeight, 10) &&
+                  over === 0 &&
+                  app.doc.documentElement.scrollWidth <= app.doc.documentElement.clientWidth;
+         }()),
+         (function () {
+           var hot = app.doc.querySelector("#chain .rung .hot");
+           return hot ? "weight " + app.win.getComputedStyle(hot).fontWeight : "no hot letter";
+         }()));
       cb.scrollTop = 0;
       cb.dispatchEvent(new app.win.Event("scroll"));
       ok("scrolling the column back to the start word takes the fade off again",

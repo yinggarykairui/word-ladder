@@ -176,7 +176,13 @@
     padding: 3px 0;
     white-space: nowrap;
   }
-  .rung .hot { color: var(--accent); }
+  /* The changed letter carried its meaning in colour alone: 6.40:1 against
+     the paper, but 2.54:1 against the ink letters either side of it, which is
+     the comparison a player actually makes, and nothing at all in a
+     high-contrast or greyscale rendering (WCAG 1.4.1). Weight is the second
+     channel, and it costs no layout: the rungs are monospace, so a bold glyph
+     occupies the same advance width as the others. */
+  .rung .hot { color: var(--accent); font-weight: 700; }
   /* The browser default is a blue block — the one shouty pixel on a
      paper-and-ink page, and it lands on every refused word. */
   ::selection { background: rgba(163, 52, 31, 0.16); }
