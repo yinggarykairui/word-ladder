@@ -740,9 +740,14 @@
 
     // The puzzle never takes its own controls away: a solved player can undo and
     // explore, and the win stands regardless, so there is nothing to disable
-    // beyond Undo at the start word.
+    // beyond Undo at the start word. The one exception is the row the field sits
+    // in: a ladder that has reached the target has no next rung, so an empty
+    // field between the last rung and the target is a gap in a finished ladder
+    // and an invitation to type a word that can only be refused. The field is
+    // put away, not disabled — Submit and Undo both stay live, and the first
+    // Undo brings the row straight back.
     el.word.disabled = false;
-    el.inputrow.className = "";
+    el.inputrow.className = atTarget ? "hidden" : "";
     el.undo.disabled = chain.length <= 1;
     el.submit.disabled = false;
 
@@ -860,12 +865,19 @@
     el.word.value = "";
     el.word.className = "";
     render();
-    el.word.focus();
+    // On the winning move the field is put away under the player's caret, so
+    // focus goes to the one control that still has a move in it rather than
+    // falling to <body>, where the next Tab would restart from the top.
+    if (w === TARGET) { try { el.undo.focus(); } catch (e) { /* ignore */ } }
+    else el.word.focus();
   }
 
   function undo() {
     if (chain.length <= 1) return;
     var undoHadFocus = document.activeElement === el.undo;
+    // Stepping back off the target puts the input row back on the board, and
+    // the caret goes with it: the point of this Undo is to type something else.
+    var leavingTarget = chain[chain.length - 1] === TARGET;
     chain.pop();
     store.chain = chain.slice();
     // store.solved is NOT cleared: the win belongs to the date. Undo walks the
@@ -875,7 +887,7 @@
     say("");
     render();
     // Disabling the button that holds focus drops activeElement to BODY.
-    if (undoHadFocus && el.undo.disabled) el.word.focus();
+    if (leavingTarget || (undoHadFocus && el.undo.disabled)) el.word.focus();
   }
 
   // An IME's in-flight text is not typed text yet. Assigning .value while a
@@ -905,7 +917,9 @@
   el.undo.addEventListener("click", undo);
 
   render();
-  try { el.word.focus(); } catch (e) { /* ignore */ }
+  // A board that loads already at the target has no field to put the caret in;
+  // grabbing focus for a row that is not on screen would drop it on <body>.
+  if (chain[chain.length - 1] !== TARGET) { try { el.word.focus(); } catch (e) { /* ignore */ } }
   // A ?d= that is not a date is not silently ignored.
   if (dparam.bad) say("that ?d= isn't a date — showing today", true);
 
