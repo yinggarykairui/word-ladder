@@ -124,7 +124,9 @@ item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → 
   at 320x568, 390x844 and 1280x800. Two consequences to keep in mind: on a short
   screen the chain box shows one rung and the rest scrolls inside it (it is a
   tab stop exactly while it has something to scroll, so the keyboard can reach
-  what is hidden and stops nowhere when nothing is — F6), and the START label scrolls away with
+  what is hidden and stops nowhere when nothing is — F6, recomputed on resize
+  since cycle 2 (C9), because a rotation changes what is hidden without playing
+  a word), and the START label scrolls away with
   the start word (it lives inside the scroller so it can never sit above a rung
   that is not the start).
 
@@ -158,18 +160,25 @@ item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → 
   solved, banked once, survives any Undo, persisted as `solved` in the blob) and
   `atTarget` (the chain in front of you ends at the target right now, which is
   what the ladder draws). Undo stays live after a solve, the status
-  line reads `solved in N moves · shortest N` while the chain ends at the target
-  and `solved today · shortest N` after an Undo — `solved · shortest N` under
+  line reads `solved in N moves · best possible N` while the chain ends at the
+  target and `solved today · best possible N` after an Undo — `solved · best
+  possible N` under
   `?d=`, where "today" would be a claim about a date that is not today (C2) —
   and re-reaching the target banks nothing a second time. Two deliberate
   deviations from the spec remain, both smaller than the ones they replace: the
   field is **not** disabled in the solved state (the spec's submit table says it
   is) — the whole input row is hidden instead while the chain ends at the target,
   because an empty field between the last rung and the target breaks a finished
-  ladder open and can only take words that will be refused (U1/F9); Submit is
-  untouched, Undo keeps its box and its focus, and the first Undo brings the row
-  back with the caret in it. And the ordered rule table has one row the spec does not list: a submit
-  while the chain already ends at the target is refused (see the thread above).
+  ladder open and can only take words that will be refused (U1/F9). Cycle 2
+  finished the thought: Submit is disabled with the row (C8/U12). Cycle 1 left
+  it live, which made it a control that read an empty field and changed nothing
+  at all — two clicks on a solved board left the DOM byte-identical — and a
+  button that does nothing teaches the player the button is dead. Undo keeps
+  its box, its focus and its move, and the first Undo brings the row, the caret
+  and Submit back. The ordered rule table still has one row the spec does not
+  list — a submit while the chain already ends at the target is refused — but
+  no player can reach it now; it is the guard on the state, exercised in
+  tests.html by submitting the form directly.
 
 - **Accented letters are folded, not stripped.** The spec's input rule is a
   literal `replace(/[^A-Za-z]/g, "")`, which turns `sîdé` into `SD` — four
@@ -196,7 +205,7 @@ item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → 
 
 - **Share card.** The one excluded feature with real pull (TASTE: "make things
   people share"): a copyable result line like `word-ladder 2026-08-10 · 5 moves
-  (shortest 4) · streak 6`. Cut from v0 because clipboard permissions, a
+  (best possible 4) · streak 6`. Cut from v0 because clipboard permissions, a
   fallback path and a toast are a cycle's worth of edge cases, and two
   consecutive evenings were lost to polish regressions. **First follow-up
   candidate** — file it as a revisit issue, do not build it today.
