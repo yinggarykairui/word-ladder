@@ -803,11 +803,36 @@
 
   // aria-live announces a change, and the same refusal twice running is not one:
   // submitting ZZZZ twice left the region byte-identical and the second refusal
-  // silent. Emptying it first makes every verdict a change, including a repeat.
+  // silent. Emptying it first is what cycle 1 added, and on its own it is not
+  // enough: both writes land in the same task, Chromium diffs the region once
+  // at the end of that task, and a region that went "" -> the same words has
+  // not changed as far as the diff is concerned. The empty has to be *seen*,
+  // which means a frame of its own — one frame blank, the next frame the same
+  // message again.
+  //
+  // Only a repeat pays for that. A message that differs from the one on the
+  // line is already a change, so it is written straight out: deferring every
+  // verdict would put it a frame behind the keystroke that earned it for no
+  // gain. Either way the line holds the newest message the moment say()
+  // returns, and a say() that lands during the blank frame owns the line from
+  // there — the guards below stand down rather than write over it.
+  var sayFrame = 0;
   function say(m, warn) {
+    if (sayFrame) { cancelAnimationFrame(sayFrame); sayFrame = 0; }
+    var repeat = m !== "" && el.msg.textContent === m;
     el.msg.textContent = "";
     el.msg.textContent = m;
     el.msg.className = warn ? "msg warn" : "msg";
+    if (!repeat) return;
+    sayFrame = requestAnimationFrame(function () {
+      sayFrame = 0;
+      if (el.msg.textContent !== m) return;   // a later say() owns the line
+      el.msg.textContent = "";
+      sayFrame = requestAnimationFrame(function () {
+        sayFrame = 0;
+        if (el.msg.textContent === "") el.msg.textContent = m;
+      });
+    });
   }
 
   /* ---------------------------- play ---------------------------------- */

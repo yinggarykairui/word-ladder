@@ -1409,6 +1409,72 @@
            "px, scrollTop " + Math.round(cb.scrollTop);
   }
 
+  /* ------- the live region across frames, not just across writes (C5) -----
+     The rows in the input matrix read #msg synchronously, which is what a
+     player's eye does. A screen reader does not: it is handed the diff the
+     renderer computes at the end of the task, and two writes inside one task
+     are one diff. These rows watch the line across frames instead. */
+
+  function frames(app, n) {
+    return new Promise(function (res) {
+      (function step(k) {
+        if (!k) { res(); return; }
+        app.win.requestAnimationFrame(function () { step(k - 1); });
+      }(n));
+    });
+  }
+
+  function liveRegion() {
+    group("the live region announces a repeat (C5)");
+    var app0, syncText, blank;
+    return openApp("?d=" + REPLAY, 390, 844).then(function (app) {
+      app0 = app;
+      play(app, "ZZZZ");
+      $(app, "word").value = "";
+      play(app, "ZZZZ");
+      syncText = msgOf(app);
+      return frames(app, 1);      // the frame the line is blank in
+    }).then(function () {
+      blank = msgOf(app0);
+      return frames(app0, 2);
+    }).then(function () {
+      ok("the same refusal twice is written straight out, then blanked for a frame of its own so the repeat is a diff",
+         syncText === "ZZZZ isn't in the list" && blank === "" &&
+         msgOf(app0) === "ZZZZ isn't in the list" &&
+         $(app0, "msg").className === "msg warn",
+         JSON.stringify(syncText) + " -> " + JSON.stringify(blank) + " -> " + JSON.stringify(msgOf(app0)));
+      // The blank frame must never eat a message that arrived during it.
+      play(app0, "ZZZZ");
+      $(app0, "word").value = "";
+      play(app0, "ZZZZ");          // schedules the blank
+      play(app0, "YYYY");          // a different verdict, same frame
+      syncText = msgOf(app0);
+      return frames(app0, 4);
+    }).then(function () {
+      ok("a verdict that lands while a repeat is blinking is not lost and is not written over",
+         syncText === "YYYY isn't in the list" && msgOf(app0) === "YYYY isn't in the list",
+         JSON.stringify(syncText) + " -> " + JSON.stringify(msgOf(app0)));
+      // A different message is a diff already: it is not deferred, and it is
+      // not blanked either, so nothing flickers on the ordinary path.
+      var seen = [];
+      $(app0, "word").value = "";
+      play(app0, "ZZZZ");
+      seen.push(msgOf(app0));
+      return frames(app0, 1).then(function () {
+        seen.push(msgOf(app0));
+        return frames(app0, 1);
+      }).then(function () {
+        seen.push(msgOf(app0));
+        ok("a verdict that differs from the one on the line is never blanked",
+           seen.join("|") === ["ZZZZ isn't in the list", "ZZZZ isn't in the list",
+                               "ZZZZ isn't in the list"].join("|"), seen.join(" | "));
+        ok("no window errors or console.error across the live-region rows",
+           app0.errors.length === 0, app0.errors.slice(0, 2).join(" | ") || "0 errors");
+        app0.close();
+      });
+    });
+  }
+
   function rotation() {
     group("rotate and resize without a reload (C9)");
     var app0;
@@ -1485,6 +1551,7 @@
       .then(function () { return layoutAndTaps(320, 568); })
       .then(function () { return layoutAndTaps(390, 844); })
       .then(function () { return roundTrip(WL); })
+      .then(function () { return liveRegion(); })
       .then(function () { return rotation(); })
       .then(function () { return heightSweepAll(); });
   }).then(finish, function (err) {
