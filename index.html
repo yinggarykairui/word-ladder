@@ -885,6 +885,10 @@
     // and the streak it banked stays banked exactly once.
     save();
     say("");
+    // The strike-through is the visible half of a verdict the message line has
+    // just dropped; left behind it is a refusal with no reason, on a word the
+    // shortened chain may now accept.
+    el.word.className = "";
     render();
     // Disabling the button that holds focus drops activeElement to BODY.
     if (leavingTarget || (undoHadFocus && el.undo.disabled)) el.word.focus();

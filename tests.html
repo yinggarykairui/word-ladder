@@ -515,6 +515,17 @@
       ok("Undo removes the last rung and disables itself at the start word",
          (function () { $(app, "undo").click(); return chainWords(app).join(" ") === START &&
                                                     $(app, "undo").disabled === true; }()));
+      // Undo drops the verdict from the message line; the strike-through is the
+      // other half of that verdict and cannot be left standing without it.
+      ok("Undo clears the strike-through it just took the reason for",
+         (function () {
+           play(app, NEXT);
+           play(app, "ZZZZ");
+           var struck = $(app, "word").className === "bad" && msgOf(app) === "ZZZZ isn't in the list";
+           $(app, "undo").click();
+           return struck && msgOf(app) === "" && $(app, "word").className === "";
+         }()), JSON.stringify($(app, "word").className) + " / " + JSON.stringify(msgOf(app)));
+      $(app, "word").value = "";
       $(app, "word").value = "";
       ok("a legal word typed in lowercase is accepted",
          (function () { play(app, NEXT.toLowerCase()); return chainWords(app).join(" ") === START + " " + NEXT; }()),
