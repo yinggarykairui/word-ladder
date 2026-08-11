@@ -942,6 +942,12 @@
   // instead of replacing it: composing "held" used to land HHEH in the field.
   // The fold waits for compositionend, which is the point the text is real.
   el.word.addEventListener("compositionstart", function () { composing = true; });
+  // The flag's other way back. A compositionstart with no compositionend and no
+  // blur — an IME dismissed by the platform rather than by the field — left the
+  // fold switched off for the rest of the session, and typing then sat in the
+  // field unfolded, digits and all. A field cannot be mid-composition at the
+  // moment it gains focus, so this costs nothing and cannot strand the flag.
+  el.word.addEventListener("focus", function () { composing = false; });
   // A field that loses focus has no composition left to protect; without this a
   // compositionend that never arrives would leave the fold switched off.
   el.word.addEventListener("blur", function () {

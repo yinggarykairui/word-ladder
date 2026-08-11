@@ -508,6 +508,37 @@
          }()), JSON.stringify($(app, "word").value));
       $(app, "word").value = "";
 
+      // The flag that waits for compositionend had three ways back —
+      // compositionend, blur and Submit — and an IME taken away by the platform
+      // fires none of them. Stranded, the fold stays switched off and ordinary
+      // typing lands in the field raw. Focus is the fourth: a field cannot be
+      // mid-composition at the moment it gains focus.
+      ok("a composition that never ends does not strand the fold: focusing the field again clears it",
+         (function () {
+           var inp = $(app, "word");
+           inp.blur();
+           inp.value = "";
+           inp.dispatchEvent(new app.win.CompositionEvent("compositionstart", { bubbles: true }));
+           // Keystrokes without a focus() in front of them: typeKeys() focuses
+           // the field, which is the very thing under test here.
+           function keys(text) {
+             var i;
+             inp.value = "";
+             for (i = 0; i < text.length; i++) {
+               inp.value = inp.value + text.charAt(i);
+               inp.dispatchEvent(new app.win.InputEvent("input",
+                 { bubbles: true, inputType: "insertText", data: text.charAt(i) }));
+             }
+           }
+           // no compositionend, no blur — the flag is on and typing is unfolded
+           keys("s1de");
+           var stranded = inp.value;
+           inp.focus();
+           keys("s1de");
+           return stranded === "s1de" && inp.value === "SDE";
+         }()), JSON.stringify($(app, "word").value));
+      $(app, "word").value = "";
+
       // --- positive rows: the right thing has to happen too ---
       $(app, "word").value = "";
       ok("a legal one-letter change is appended and announced",
