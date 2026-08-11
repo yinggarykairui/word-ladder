@@ -984,6 +984,15 @@
     markBad(true);
     el.word.focus();
     try { el.word.select(); } catch (e) { /* ignore */ }
+    // Moving the message above the buttons shortened the distance from the
+    // field to the reason, but on a phone held sideways it did not clear the
+    // fold: 40.6px below it at 844x390 and 55.6px at 667x375, at scrollY 0,
+    // with focus() scrolling the field into view and stopping there. A reason
+    // the player has to guess is there is not a reason. `nearest` is the whole
+    // point of the option — where the message is already on screen it scrolls
+    // nothing at all, and it moves the page, not the ladder column, so it has
+    // nothing to argue with fitColumn() about.
+    try { el.msg.scrollIntoView({ block: "nearest" }); } catch (e) { /* ignore */ }
   }
 
   function commit() {

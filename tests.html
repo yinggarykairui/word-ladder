@@ -1673,6 +1673,16 @@
          app.win.getComputedStyle($(app, "chainbox")).overscrollBehaviorY === "auto",
          app.win.getComputedStyle($(app, "chainbox")).overscrollBehaviorY);
       play(app, "ZZZZ");
+      // Reachable is not the same as read. At 844x390 the message sat 40.6px
+      // below the fold at scrollY 0 and the player had to guess it was there,
+      // so reject() scrolls it into view itself — `nearest`, which is a no-op
+      // wherever it is already on screen.
+      var rj = msg.getBoundingClientRect();
+      ok("a refusal at 844x390 brings its own reason on screen, without a hand on the page",
+         rj.top >= -0.5 && rj.bottom <= app.win.innerHeight + 0.5,
+         "scrollY " + Math.round(app.win.scrollY) + ", msg bottom " +
+         Math.round(rj.bottom) + " in " + app.win.innerHeight);
+      app.win.scrollTo(0, 0);
       var de = doc.documentElement, hidden = de.scrollHeight - de.clientHeight;
       app.win.scrollTo(0, hidden);
       var r = msg.getBoundingClientRect();
@@ -1690,6 +1700,14 @@
       ok("and it is above the fold on a cold load from 460px of height up",
          r.top >= -0.5 && r.bottom <= app.win.innerHeight + 0.5,
          "msg bottom " + Math.round(r.bottom) + " in " + app.win.innerHeight);
+      // The other half of `nearest`: a page that did not need moving is not
+      // moved. A refusal that yanked a board the player could already see
+      // would be a worse bug than the one it fixed.
+      play(app, "ZZZZ");
+      ok("and a refusal on a viewport that already shows it scrolls the page not one pixel",
+         app.win.scrollY === 0 && msgOf(app) === "ZZZZ isn't in the list",
+         "scrollY " + app.win.scrollY);
+      $(app, "word").value = "";
       app.close();
     });
   }
