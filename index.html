@@ -812,10 +812,15 @@
     el.undo.disabled = chain.length <= 1;
     el.submit.disabled = atTarget;
 
-    // The bottom word doubles as the win: its label reads "solved" once today's
-    // puzzle is done. One word, in the accent, and nothing else moves.
-    el.targetlab.textContent = solved ? "solved" : "target";
-    el.targetlab.className = "lab" + (solved ? " won" : "");
+    // The bottom word doubles as the win: its label reads "solved" while the
+    // ladder is standing in it. One word, in the accent, and nothing else
+    // moves. It follows atTarget and not solved, because the label names the
+    // word directly under it: two Undos past a solve leave the target sitting
+    // unplayed behind the rule, and a label reading SOLVED over a word the
+    // ladder does not reach is a claim about the wrong thing. The day is still
+    // won, and the status line two elements down is where that is said.
+    el.targetlab.textContent = atTarget ? "solved" : "target";
+    el.targetlab.className = "lab" + (atTarget ? " won" : "");
 
     el.status.className = "status" + (solved ? " solved" : "");
     el.status.textContent = atTarget

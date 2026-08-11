@@ -690,7 +690,10 @@
                   // "today" would be a claim about a date that is not today:
                   // this board is a replay, and the header says so.
                   $(app, "status").textContent === "solved · best possible " + WL.puzzle.par &&
-                  $(app, "targetlab").textContent === "solved";
+                  // The label names the word under it, and the ladder no
+                  // longer reaches that word. The day is still won: the status
+                  // line says so, and it is the line that means the day.
+                  $(app, "targetlab").textContent === "target";
          }()), $(app, "status").textContent + " / " + $(app, "targetlab").textContent);
       ok("that Undo brings the input row back and puts the caret in it",
          app.win.getComputedStyle($(app, "inputrow")).display !== "none" &&
@@ -775,9 +778,9 @@
       ok("(g) Undo after the solve shortens the chain and banks nothing back",
          b.streak === 1 && b.solved === true && b.lastSolved === today &&
          b.chain.length === moves && app.WL.state().chain.length === moves, JSON.stringify(b));
-      ok("(g) and the screen still says the day is won",
+      ok("(g) and the screen still says the day is won, over a target the ladder no longer reaches",
          $(app, "status").textContent === "solved today · best possible " + app.WL.puzzle.par &&
-         $(app, "targetlab").textContent === "solved" &&
+         $(app, "targetlab").textContent === "target" &&
          $(app, "streak").textContent === "streak 1 · best 1",
          $(app, "status").textContent + " / " + $(app, "streak").textContent);
       app.close();
