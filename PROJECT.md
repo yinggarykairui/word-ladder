@@ -60,7 +60,9 @@ index.html
    │                  Pure function of (dateStr, WORDS). Returns
    │                  {start, target, par, parents}.
    ├─ store           read/write `word-ladder.v1`; every read and write in
-   │                  try/catch + a shape check; `?d=` mode is a no-op writer.
+   │                  try/catch + a shape check; a `?d=` naming a date other
+   │                  than today is a no-op writer (`?d=<today>` is today's
+   │                  game, and loads and saves like a plain load — C4).
    ├─ validate(word)  the ordered rule table from the spec; returns a reason,
    │                  never throws.
    └─ render          textContent only, never innerHTML with player input;
@@ -121,7 +123,8 @@ item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → 
   every hidden pixel reachable by wheel and keyboard, and no page scroll at all
   at 320x568, 390x844 and 1280x800. Two consequences to keep in mind: on a short
   screen the chain box shows one rung and the rest scrolls inside it (it is a
-  tab stop, so the keyboard can reach it), and the START label scrolls away with
+  tab stop exactly while it has something to scroll, so the keyboard can reach
+  what is hidden and stops nowhere when nothing is — F6), and the START label scrolls away with
   the start word (it lives inside the scroller so it can never sit above a rung
   that is not the start).
 
@@ -154,14 +157,18 @@ item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → 
   The build now keeps two separate facts: `solved` (this UTC date has been
   solved, banked once, survives any Undo, persisted as `solved` in the blob) and
   `atTarget` (the chain in front of you ends at the target right now, which is
-  what the ladder draws). Undo and the input stay live after a solve, the status
+  what the ladder draws). Undo stays live after a solve, the status
   line reads `solved in N moves · shortest N` while the chain ends at the target
-  and `solved today · shortest N` after an Undo, and re-reaching the target
-  banks nothing a second time. Two deliberate deviations from the spec remain,
-  both smaller than the ones they replace: the field is **not** disabled in the
-  solved state (the spec's submit table says it is — but a live field is what
-  makes exploring after a win possible and keeps a focusable control on the
-  page), and the ordered rule table has one row the spec does not list: a submit
+  and `solved today · shortest N` after an Undo — `solved · shortest N` under
+  `?d=`, where "today" would be a claim about a date that is not today (C2) —
+  and re-reaching the target banks nothing a second time. Two deliberate
+  deviations from the spec remain, both smaller than the ones they replace: the
+  field is **not** disabled in the solved state (the spec's submit table says it
+  is) — the whole input row is hidden instead while the chain ends at the target,
+  because an empty field between the last rung and the target breaks a finished
+  ladder open and can only take words that will be refused (U1/F9); Submit is
+  untouched, Undo keeps its box and its focus, and the first Undo brings the row
+  back with the caret in it. And the ordered rule table has one row the spec does not list: a submit
   while the chain already ends at the target is refused (see the thread above).
 
 - **Accented letters are folded, not stripped.** The spec's input rule is a
