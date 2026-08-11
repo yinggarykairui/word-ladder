@@ -362,7 +362,7 @@
        (function () {
          var p = WL.puzzle, path = WL.pathOf(p);
          return path && path.length - 1 === p.par &&
-                $(app, "status").textContent === "shortest: " + p.par + " moves";
+                $(app, "status").textContent === "best possible: " + p.par + " moves";
        }()), WL.puzzle.start.toUpperCase() + " -> " + WL.puzzle.target.toUpperCase() +
              ", par " + WL.puzzle.par);
 
@@ -608,10 +608,17 @@
          chainWords(app).join(" "));
       for (i = 2; i < path.length; i++) play(app, path[i]);
       ok("the final legal move reaches the target and flips the solved state",
-         $(app, "status").textContent === "solved in " + (path.length - 1) + " moves · shortest " + WL.puzzle.par &&
+         $(app, "status").textContent === "solved in " + (path.length - 1) + " moves · best possible " + WL.puzzle.par &&
          $(app, "targetlab").textContent === "solved" &&
-         msgOf(app) === "added " + TARGET + " · solved in " + (path.length - 1) +
-                        " moves, shortest " + WL.puzzle.par,
+         msgOf(app) === "added " + TARGET + " · solved in " + (path.length - 1) + " moves",
+         $(app, "status").textContent + " / " + msgOf(app));
+      // "shortest: 3 moves" read as a move allowance, and the same number was
+      // said three ways on one screen. One phrasing, and only where it earns
+      // its place.
+      ok("the par is named one way, in one place, on the solved board",
+         app.doc.body.innerText.indexOf("shortest") === -1 &&
+         $(app, "status").textContent.indexOf(" · best possible " + WL.puzzle.par) !== -1 &&
+         msgOf(app).indexOf("best possible") === -1,
          $(app, "status").textContent + " / " + msgOf(app));
       ok("the win is announced in the live region, not only printed in the status line",
          msgOf(app).indexOf("solved in") !== -1 && $(app, "msg").getAttribute("aria-live") === "polite",
@@ -663,7 +670,7 @@
            return app.WL.state().chain.length === path.length - 1 &&
                   // "today" would be a claim about a date that is not today:
                   // this board is a replay, and the header says so.
-                  $(app, "status").textContent === "solved · shortest " + WL.puzzle.par &&
+                  $(app, "status").textContent === "solved · best possible " + WL.puzzle.par &&
                   $(app, "targetlab").textContent === "solved";
          }()), $(app, "status").textContent + " / " + $(app, "targetlab").textContent);
       ok("that Undo brings the input row back and puts the caret in it",
@@ -675,7 +682,7 @@
          (function () {
            play(app, TARGET);
            return $(app, "status").textContent === "solved in " + (path.length - 1) +
-                  " moves · shortest " + WL.puzzle.par;
+                  " moves · best possible " + WL.puzzle.par;
          }()), $(app, "status").textContent);
       ok("the solved target rung marks the letter that changed and is drawn once",
          app.doc.querySelectorAll("#target .hot").length === 1 &&
@@ -750,7 +757,7 @@
          b.streak === 1 && b.solved === true && b.lastSolved === today &&
          b.chain.length === moves && app.WL.state().chain.length === moves, JSON.stringify(b));
       ok("(g) and the screen still says the day is won",
-         $(app, "status").textContent === "solved today · shortest " + app.WL.puzzle.par &&
+         $(app, "status").textContent === "solved today · best possible " + app.WL.puzzle.par &&
          $(app, "targetlab").textContent === "solved" &&
          $(app, "streak").textContent === "streak 1 · best 1",
          $(app, "status").textContent + " / " + $(app, "streak").textContent);
@@ -760,7 +767,7 @@
       var path = app.WL.pathOf(app.WL.puzzle).map(function (x) { return x.toUpperCase(); });
       ok("(g) reloading after solve-then-undo keeps the win and the shortened chain",
          app.WL.state().chain.length === path.length - 1 &&
-         $(app, "status").textContent === "solved today · shortest " + app.WL.puzzle.par,
+         $(app, "status").textContent === "solved today · best possible " + app.WL.puzzle.par,
          app.WL.state().chain.join(" ") + " / " + $(app, "status").textContent);
       play(app, path[path.length - 1]);
       var b = blobOf();
@@ -768,13 +775,13 @@
          b.streak === 1 && b.best === 1 && b.lastSolved === today &&
          $(app, "streak").textContent === "streak 1 · best 1", JSON.stringify(b));
       ok("(g) and it names the move count again",
-         $(app, "status").textContent === "solved in " + (path.length - 1) + " moves · shortest " +
+         $(app, "status").textContent === "solved in " + (path.length - 1) + " moves · best possible " +
          app.WL.puzzle.par, $(app, "status").textContent);
       undoAll(app);
       b = blobOf();
       ok("(g) undoing all the way back to the start word still leaves the day won",
          app.WL.state().chain.length === 1 && b.solved === true && b.streak === 1 &&
-         $(app, "status").textContent === "solved today · shortest " + app.WL.puzzle.par,
+         $(app, "status").textContent === "solved today · best possible " + app.WL.puzzle.par,
          JSON.stringify(b) + " / " + $(app, "status").textContent);
       app.close();
       return null;

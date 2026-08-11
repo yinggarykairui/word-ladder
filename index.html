@@ -812,13 +812,13 @@
 
     el.status.className = "status" + (solved ? " solved" : "");
     el.status.textContent = atTarget
-      ? "solved in " + (chain.length - 1) + " moves · shortest " + PUZ.par
+      ? "solved in " + (chain.length - 1) + " moves · best possible " + PUZ.par
       : solved
         // "today" is a claim about the date at the top of the page, and in a
         // replay that date is not today — the header two lines up already says
         // the run is not being saved anywhere.
-        ? (readOnly ? "solved" : "solved today") + " · shortest " + PUZ.par
-        : "shortest: " + PUZ.par + " moves";
+        ? (readOnly ? "solved" : "solved today") + " · best possible " + PUZ.par
+        : "best possible: " + PUZ.par + " moves";
 
     fitColumn();
 
@@ -976,9 +976,13 @@
     }
     save();
     // The win is announced in the live region, not only printed in #status:
-    // otherwise a screen-reader player is never told they solved it.
+    // otherwise a screen-reader player is never told they solved it. The par
+    // is not repeated here — the status line one element above says "solved in
+    // N moves · best possible P" and the message would be the third telling of
+    // the same number in three different shapes. It also wrapped to two lines
+    // at 320px, which put 3px of the finished board into a scrollbar.
     say(w === TARGET
-      ? "added " + w + " · solved in " + (chain.length - 1) + " moves, shortest " + PUZ.par
+      ? "added " + w + " · solved in " + (chain.length - 1) + " moves"
       : "added " + w);
     el.word.value = "";
     el.word.className = "";
