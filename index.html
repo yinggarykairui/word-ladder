@@ -590,8 +590,11 @@
 
   var dparam = debugParam();
   var debugDay = dparam.day;
-  var readOnly = debugDay !== null;
   var today = utcDateStr(new Date());
+  // ?d=<today> is today's puzzle, so it is today's game: a read-only board would
+  // show an empty ladder over the real streak line and hide progress that is
+  // sitting in storage. Only another date is a replay.
+  var readOnly = debugDay !== null && debugDay !== today;
   var puzzleDate = debugDay || today;
   var PUZ = puzzleFor(puzzleDate);
 
@@ -760,7 +763,10 @@
     el.status.textContent = atTarget
       ? "solved in " + (chain.length - 1) + " moves · shortest " + PUZ.par
       : solved
-        ? "solved today · shortest " + PUZ.par
+        // "today" is a claim about the date at the top of the page, and in a
+        // replay that date is not today — the header two lines up already says
+        // the run is not being saved anywhere.
+        ? (readOnly ? "solved" : "solved today") + " · shortest " + PUZ.par
         : "shortest: " + PUZ.par + " moves";
 
     // The chain column is the only part of the page that scrolls, so the rung
