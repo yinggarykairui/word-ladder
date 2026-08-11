@@ -420,7 +420,7 @@
          msgOf(app));
       ok("a refused word stays in the field and is selected", selected(app), $(app, "word").value);
       ok("three letters ask for four",
-         (function () { play(app, START.slice(0, 3)); return msgOf(app) === "four letters"; }()), msgOf(app));
+         (function () { play(app, START.slice(0, 3)); return msgOf(app) === "needs four letters"; }()), msgOf(app));
       ok("repeating the word above is named as such",
          (function () { play(app, START); return msgOf(app) === "that's the same word"; }()), msgOf(app));
       ok("a two-letter jump is refused",
@@ -581,7 +581,7 @@
            var first = msgOf(app);
            $(app, "word").value = "";
            play(app, START.slice(0, 3));
-           return first === "ZZZZ isn't in the list" && msgOf(app) === "four letters" &&
+           return first === "ZZZZ isn't in the list" && msgOf(app) === "needs four letters" &&
                   $(app, "msg").childNodes.length <= 1;
          }()), msgOf(app));
       $(app, "word").value = "";
@@ -605,7 +605,7 @@
          }()), String($(app, "word").getAttribute("aria-invalid")));
       $(app, "word").value = "";
       ok("a word already in the chain is refused as already used",
-         (function () { play(app, START); return msgOf(app) === "already used" &&
+         (function () { play(app, START); return msgOf(app) === "already used that word" &&
                                                   chainWords(app).length === 2; }()), msgOf(app));
       ok("Undo removes the last rung and disables itself at the start word",
          (function () { $(app, "undo").click(); return chainWords(app).join(" ") === START &&

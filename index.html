@@ -976,11 +976,11 @@
     // Submit is disabled at the target and the field is put away — kept as the
     // guard on the state, not as a message anyone is expected to read.
     if (prev === TARGET) return reject("already at the target — Undo to step back");
-    if (w.length < 4) return reject("four letters");
+    if (w.length < 4) return reject("needs four letters");
     if (!WORDSET[w.toLowerCase()]) return reject(w + " isn't in the list");
     if (w === prev) return reject("that's the same word");
     if (diffCount(w, prev) !== 1) return reject("change exactly one letter");
-    if (chain.indexOf(w) !== -1) return reject("already used");
+    if (chain.indexOf(w) !== -1) return reject("already used that word");
 
     chain.push(w);
     store.chain = chain.slice();
