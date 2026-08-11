@@ -1518,6 +1518,47 @@
          cb.scrollTop > 0 && cb.className.indexOf("faded") !== -1 &&
          app.win.getComputedStyle(cb).maskImage.indexOf("linear-gradient") === 0,
          Math.round(cb.scrollTop) + "px above, " + JSON.stringify(cb.className));
+      // The fade is a 14px ramp, so switching it on for a 5px overflow put the
+      // ramp over text that was on screen: the START label measured 1.45:1 on
+      // paper against 5.60:1 unfaded. Below the ramp height there is nothing
+      // worth a cue.
+      ok("an overflow shorter than the ramp does not fade the visible text (U16)",
+         (function () {
+           var out = [], t;
+           for (t = 0; t < 14; t += 13) {
+             cb.scrollTop = t;
+             cb.dispatchEvent(new app.win.Event("scroll"));
+             out.push(t + ":" + (cb.className.indexOf("faded") !== -1) + ":" +
+                      (app.win.getComputedStyle(cb).maskImage === "none"));
+           }
+           cb.scrollTop = 14;
+           cb.dispatchEvent(new app.win.Event("scroll"));
+           out.push("14:" + (cb.className.indexOf("faded") !== -1) + ":" +
+                    (app.win.getComputedStyle(cb).maskImage.indexOf("linear-gradient") === 0));
+           return out.join(" ") === "0:false:true 13:false:true 14:true:true";
+         }()), "scrollTop 0 / 13 / 14");
+      // The mask fades whatever is under the top edge, and at 390x844 the
+      // pinned scroll position lands that edge in inter-rung whitespace: the
+      // darkest pixel in the ramp was the rail at 1.40:1, so the fade was
+      // paper on paper. The hairline does not depend on what is under it. It
+      // is the parent's background, so the mask cannot wash it out.
+      ok("a scrolled column also gets a hairline at its top edge, in the boundary colour (U2)",
+         (function () {
+           var lad = app.doc.querySelector(".ladder"), cs;
+           cb.scrollTop = cb.scrollHeight;
+           cb.dispatchEvent(new app.win.Event("scroll"));
+           cs = app.win.getComputedStyle(lad);
+           if (cs.backgroundImage.indexOf("gradient") === -1) return false;
+           if (cs.backgroundImage.indexOf("140, 131, 120") === -1) return false;  // --edge
+           if (cs.backgroundSize !== "92% 1px") return false;
+           if (cs.backgroundOrigin !== "content-box") return false;
+           cb.scrollTop = 0;
+           cb.dispatchEvent(new app.win.Event("scroll"));
+           return app.win.getComputedStyle(lad).backgroundImage === "none";
+         }()),
+         app.win.getComputedStyle(app.doc.querySelector(".ladder")).backgroundImage.slice(0, 40));
+      cb.scrollTop = cb.scrollHeight;
+      cb.dispatchEvent(new app.win.Event("scroll"));
       // The changed letter measured 2.54:1 against the ink letters beside it —
       // the comparison a player makes — so colour was carrying it alone.
       ok("the changed letter is bolder than the letters beside it, and no rung gets wider for it at 320px",
@@ -1545,16 +1586,23 @@
       ok("scrolling the column back to the start word takes the fade off again",
          cb.className.indexOf("faded") === -1 &&
          app.win.getComputedStyle(cb).maskImage === "none", JSON.stringify(cb.className));
-      // A mask clips everything the element paints, the outline included, so
-      // the fade stands down while the column is the focused control.
+      // A mask clips everything the element paints, and an outline 2px OUTSIDE
+      // the border box is outside the mask's painting area — which is why the
+      // fade used to stand down under focus, taking the top-edge cue away from
+      // the keyboard player and leaving it for the mouse (U18). Drawn 2px
+      // inside the box the ring is inside the painting area, so both can be on
+      // at once: measured at 390x844 with 289px hidden, the ring paints
+      // 6.40:1 on paper down both sides and along the bottom, and its top
+      // segment reads 3.66:1 over the hairline.
       cb.scrollTop = cb.scrollHeight;
       cb.dispatchEvent(new app.win.Event("scroll"));
       cb.focus();
-      ok("the fade never clips the focus outline: it is off while the column is focused",
-         !cb.matches(":focus-visible") ||
-         app.win.getComputedStyle(cb).maskImage === "none",
-         "focus-visible " + cb.matches(":focus-visible") + ", mask " +
-         app.win.getComputedStyle(cb).maskImage.slice(0, 24));
+      ok("the fade stays on while the column is focused, and the ring is drawn inside it (U18)",
+         cb.className.indexOf("faded") !== -1 &&
+         app.win.getComputedStyle(cb).maskImage.indexOf("linear-gradient") === 0 &&
+         app.win.getComputedStyle(cb).outlineOffset === "-2px",
+         "mask " + app.win.getComputedStyle(cb).maskImage.slice(0, 16) +
+         ", outline-offset " + app.win.getComputedStyle(cb).outlineOffset);
       // The ceiling: --chrome budgets for an input row that is not on the page
       // at the target.
       undoAll(app);

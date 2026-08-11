@@ -99,19 +99,43 @@
     scrollbar-width: thin;
     scrollbar-color: var(--rule) transparent;
   }
-  #chainbox:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* Inset, not outset. A mask clips everything the element paints, and an
+     outline sitting 2px OUTSIDE the border box is outside the mask's painting
+     area, so the ring vanished wherever the mask was on. The old answer was to
+     switch the mask off under focus, which took the top-edge cue away from the
+     one player who scrolls the column deliberately — the keyboard player — and
+     left it for the mouse. Drawn 2px inside the border box the ring is inside
+     the painting area and survives the mask on all four sides. */
+  #chainbox:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   /* A column scrolled up its own length looked like a column that starts
      there: the scrollbar is an overlay (offsetWidth == clientWidth, so it
      reserves no room) and it paints at 1.40:1 when it paints at all, and at
      320px the clipped tops of the hidden rungs read as a second dashed rule
      rather than as letters. The fade says "there is more above" in the one
-     way that costs no layout. Only while there is something above the top
-     edge — an always-on fade is a decoration that lies on a full column — and
-     never while the column is focused, because a mask clips everything the
-     element paints, the focus outline included. */
-  #chainbox.faded:not(:focus-visible) {
+     way that costs no layout — and it stays on under focus, because the ring
+     is now drawn inside the box it fades. */
+  #chainbox.faded {
     -webkit-mask-image: linear-gradient(#0000, #000 14px);
     mask-image: linear-gradient(#0000, #000 14px);
+  }
+  /* The fade on its own is a cue only where there is something for it to fade.
+     It reads at 320px, where the clipped tops of the hidden rungs fall inside
+     the ramp — but fitColumn() pins the column to its own bottom, and at
+     390x844 that alignment lands the top edge in inter-rung whitespace at
+     every chain length from 6 to 11: the darkest pixel in the top 14px was the
+     rail at 1.40:1, so the mask was fading paper into paper while 289px of
+     ladder (five rungs, the START label among them) sat hidden with no cue at
+     all. The hairline does not depend on what happens to be under the edge. It
+     is painted by the parent, so the mask cannot wash out the cue it is paired
+     with, and it is drawn in --edge — the control-boundary colour, 3.49:1 on
+     paper — rather than the 1.40:1 rail, because it is the only thing saying
+     the column is cut. Same inset as the rails, so it spans them. */
+  .ladder:has(> #chainbox.faded) {
+    background-image: linear-gradient(var(--edge), var(--edge));
+    background-repeat: no-repeat;
+    background-origin: content-box;
+    background-size: 92% 1px;
+    background-position: top center;
   }
   /* --chrome budgets for the input row at every state, and at the target the
      row is not on the page: 64px of it (a 16px gap and a 48px field) is spare
@@ -865,9 +889,15 @@
     fade();
   }
 
-  // The fade at the top edge is on exactly while there is something above it.
+  // The fade at the top edge is on exactly while there is enough above it to
+  // be worth a cue. `> 0` faded the top 14px of the column for a 3px overflow,
+  // which washed out text the player could see: measured at 390x570 solved,
+  // with 5px hidden, the START label rendered #d2cec7 on #faf7f2 — 1.47:1,
+  // against 5.60:1 unfaded, and a WCAG 1.4.3 failure on a visible label. Below
+  // the ramp height there is nothing worth a cue, and the cue costs more than
+  // the hidden pixels are worth.
   function fade() {
-    el.chainbox.classList.toggle("faded", el.chainbox.scrollTop > 0);
+    el.chainbox.classList.toggle("faded", el.chainbox.scrollTop >= 14);
   }
 
   // aria-live announces a change, and the same refusal twice running is not one:
