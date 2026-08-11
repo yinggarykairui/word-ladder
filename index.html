@@ -776,6 +776,9 @@
     return s.replace(/[^A-Za-z]/g, "").toUpperCase().slice(0, 4);
   }
 
+  // True between compositionstart and compositionend: an IME is mid-word.
+  var composing = false;
+
   function normalise() {
     var raw = el.word.value, v = fold(raw);
     if (v !== raw) {
@@ -801,6 +804,9 @@
   }
 
   function commit() {
+    // Submitting ends any composition as far as this field is concerned: the
+    // flag must never outlive the text it was guarding.
+    composing = false;
     var w = normalise();
     if (w.length === 0) {
       // Act, do not talk: the first tap on a phone lands on Submit, and doing
@@ -867,7 +873,29 @@
     if (undoHadFocus && el.undo.disabled) el.word.focus();
   }
 
-  el.word.addEventListener("input", function () { el.word.className = ""; normalise(); });
+  // An IME's in-flight text is not typed text yet. Assigning .value while a
+  // composition is open commits the half-formed reading and collapses the
+  // composition range, so the IME's next update appends to what was committed
+  // instead of replacing it: composing "held" used to land HHEH in the field.
+  // The fold waits for compositionend, which is the point the text is real.
+  el.word.addEventListener("compositionstart", function () { composing = true; });
+  // A field that loses focus has no composition left to protect; without this a
+  // compositionend that never arrives would leave the fold switched off.
+  el.word.addEventListener("blur", function () {
+    if (!composing) return;
+    composing = false;
+    normalise();
+  });
+  el.word.addEventListener("compositionend", function () {
+    composing = false;
+    el.word.className = "";
+    normalise();
+  });
+  el.word.addEventListener("input", function (e) {
+    el.word.className = "";
+    if (composing || (e && e.isComposing)) return;
+    normalise();
+  });
   el.form.addEventListener("submit", function (e) { e.preventDefault(); commit(); });
   el.undo.addEventListener("click", undo);
 

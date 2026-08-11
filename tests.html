@@ -421,6 +421,33 @@
          }()), $(app, "word").value + " caret " + $(app, "word").selectionStart);
       $(app, "word").value = "";
 
+      // An IME composes in the field before the text is real. Folding mid-
+      // composition commits the reading and collapses the composition range, so
+      // the IME's next update appends to what was committed instead of replacing
+      // it — composing "held" landed HHEH in the field. The loop below models
+      // exactly that: whenever the page has rewritten .value, the IME's next
+      // insertion goes on the end.
+      ok("an IME composing a word leaves the word, not its own history",
+         (function () {
+           var inp = $(app, "word");
+           inp.value = "";
+           inp.dispatchEvent(new app.win.CompositionEvent("compositionstart", { bubbles: true }));
+           var base = "", expected = "", steps = ["h", "he", "hel", "held"], i;
+           for (i = 0; i < steps.length; i++) {
+             if (inp.value !== expected) base = inp.value;
+             inp.value = base + steps[i];
+             expected = inp.value;
+             inp.dispatchEvent(new app.win.CompositionEvent("compositionupdate", { bubbles: true, data: steps[i] }));
+             inp.dispatchEvent(new app.win.InputEvent("input", { bubbles: true, isComposing: true }));
+           }
+           if (inp.value !== expected) base = inp.value;
+           inp.value = base + "held";
+           inp.dispatchEvent(new app.win.CompositionEvent("compositionend", { bubbles: true, data: "held" }));
+           inp.dispatchEvent(new app.win.InputEvent("input", { bubbles: true, isComposing: false }));
+           return inp.value === "HELD";
+         }()), JSON.stringify($(app, "word").value));
+      $(app, "word").value = "";
+
       // --- positive rows: the right thing has to happen too ---
       $(app, "word").value = "";
       ok("a legal one-letter change is appended and announced",
