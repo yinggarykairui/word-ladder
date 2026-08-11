@@ -775,17 +775,30 @@
         ? (readOnly ? "solved" : "solved today") + " · shortest " + PUZ.par
         : "shortest: " + PUZ.par + " moves";
 
-    // The chain column is the only part of the page that scrolls, so the rung
-    // nearest the input is the one to keep in view after every change.
-    el.chainbox.scrollTop = el.chainbox.scrollHeight;
-
-    // It is a tab stop only while it has something to scroll: on a fresh puzzle
-    // one Shift-Tab out of the input landed on a column with nothing hidden in
-    // it and no way to tell that from a dead stop. The order the README
-    // promises — input, Submit, Undo — is untouched either way.
-    el.chainbox.tabIndex = el.chainbox.scrollHeight > el.chainbox.clientHeight ? 0 : -1;
+    fitColumn();
 
     justAdded = false;
+  }
+
+  // The two things about the ladder column that depend on the size of the
+  // window and not on the state of the game:
+  //
+  //   the scroll position — the chain column is the only part of the page that
+  //   scrolls, so the rung nearest the input is the one to keep in view;
+  //
+  //   the tab stop — it is one only while it has something to scroll. On a
+  //   fresh puzzle one Shift-Tab out of the input landed on a column with
+  //   nothing hidden in it and no way to tell that from a dead stop. The order
+  //   the README promises — input, Submit, Undo — is untouched either way.
+  //
+  // Both were written by render() alone, and a rotation does not play a word:
+  // a phone turned from portrait to landscape hid 107px of ladder including the
+  // START label behind a column that was still tabIndex -1, and left the last
+  // rung 268px below the visible area. reject() does not call render() either,
+  // so this is a function of its own rather than a line inside one.
+  function fitColumn() {
+    el.chainbox.scrollTop = el.chainbox.scrollHeight;
+    el.chainbox.tabIndex = el.chainbox.scrollHeight > el.chainbox.clientHeight ? 0 : -1;
   }
 
   // aria-live announces a change, and the same refusal twice running is not one:
@@ -948,6 +961,8 @@
   });
   el.form.addEventListener("submit", function (e) { e.preventDefault(); commit(); });
   el.undo.addEventListener("click", undo);
+  // A rotation changes how much of the ladder fits without changing the ladder.
+  window.addEventListener("resize", fitColumn);
 
   render();
   // A board that loads already at the target has no field to put the caret in;

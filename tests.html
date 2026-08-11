@@ -1357,6 +1357,65 @@
     });
   }
 
+  /* -------- rotation: the same page, a different viewport (C9) ------------
+     Every row above loads the page at the size it tests it at. A phone that is
+     turned over does not reload: the ladder column keeps whatever tab stop and
+     scroll position it was given by the last render(), and both are answers to
+     a question about the old viewport. */
+
+  function resizeTo(app, w, h) {
+    app.frame.style.width = w + "px";
+    app.frame.style.height = h + "px";
+    // A resize event, then a frame for the layout it causes.
+    return new Promise(function (res) {
+      setTimeout(function () { app.win.requestAnimationFrame(function () { res(app); }); }, 80);
+    });
+  }
+  function pinned(cb) { return cb.scrollHeight - cb.clientHeight - cb.scrollTop <= 1; }
+  function tabRight(cb) { return cb.tabIndex === (cb.scrollHeight > cb.clientHeight ? 0 : -1); }
+  function colStr(cb) {
+    return "tabIndex " + cb.tabIndex + ", " + cb.scrollHeight + " in " + cb.clientHeight +
+           "px, scrollTop " + Math.round(cb.scrollTop);
+  }
+
+  function rotation() {
+    group("rotate and resize without a reload (C9)");
+    var app0;
+    return openApp("?d=" + REPLAY, 390, 844).then(function (app) {
+      app0 = app;
+      var walk = longWalk(app, 8), i;
+      for (i = 0; i < walk.length; i++) play(app, walk[i]);
+      $(app, "word").value = "";
+      var cb = $(app, "chainbox");
+      ok("portrait, eight rungs: the column is pinned to the last rung and is a tab stop iff it overflows",
+         pinned(cb) && tabRight(cb), colStr(cb));
+      return resizeTo(app, 844, 390);
+    }).then(function () {
+      var cb = $(app0, "chainbox");
+      ok("rotating to landscape without a reload re-pins the column to the last rung",
+         pinned(cb), colStr(cb));
+      ok("and recomputes the tab stop, so a column that hides the START label is keyboard-reachable",
+         cb.scrollHeight > cb.clientHeight && cb.tabIndex === 0, colStr(cb));
+      return resizeTo(app0, 1280, 1080);
+    }).then(function () {
+      var cb = $(app0, "chainbox");
+      ok("and a viewport that fits the whole ladder takes the tab stop away again",
+         cb.scrollHeight <= cb.clientHeight && cb.tabIndex === -1, colStr(cb));
+      // reject() never calls render(), so a refusal followed by a rotation is
+      // the path with no render() anywhere in it.
+      play(app0, "ZZZZ");
+      $(app0, "word").value = "";
+      return resizeTo(app0, 390, 500);
+    }).then(function () {
+      var cb = $(app0, "chainbox");
+      ok("a rotation after a refusal — the path render() is never on — still leaves the column pinned and correct",
+         pinned(cb) && tabRight(cb) && cb.tabIndex === 0, colStr(cb));
+      ok("no window errors or console.error across the rotations", app0.errors.length === 0,
+         app0.errors.slice(0, 2).join(" | ") || "0 errors");
+      app0.close();
+    });
+  }
+
   function heightSweepAll() {
     var chainP = Promise.resolve();
     SWEEP_VIEWPORTS.forEach(function (vp) {
@@ -1395,6 +1454,7 @@
       .then(function () { return layoutAndTaps(320, 568); })
       .then(function () { return layoutAndTaps(390, 844); })
       .then(function () { return roundTrip(WL); })
+      .then(function () { return rotation(); })
       .then(function () { return heightSweepAll(); });
   }).then(finish, function (err) {
     group("harness");
