@@ -595,12 +595,32 @@
          $(app, "word").getBoundingClientRect().height === 0 &&
          app.doc.activeElement === $(app, "undo") && $(app, "undo").disabled === false,
          app.doc.activeElement ? app.doc.activeElement.id || app.doc.activeElement.tagName : "null");
-      ok("a solved puzzle still has controls to reach: Submit and Undo are live and the field is only hidden",
-         $(app, "word").disabled === false && $(app, "submit").disabled === false &&
-         $(app, "undo").disabled === false &&
+      // Was: "Submit and Undo are live". Cycle 1 put the input row away and left
+      // Submit enabled, which made it a control that could not act on any input
+      // a player could give it: it read the empty field, took the "nothing
+      // typed" branch and left the page byte-identical. Spent controls say so.
+      ok("a solved puzzle spends Submit and keeps Undo: the button that cannot act is disabled, the one that can is not",
+         $(app, "submit").disabled === true && $(app, "undo").disabled === false &&
+         $(app, "word").disabled === false &&
          $(app, "undo").getBoundingClientRect().height >= 44,
          "word " + $(app, "word").disabled + ", submit " + $(app, "submit").disabled +
          ", undo " + $(app, "undo").disabled);
+      ok("a disabled Submit is out of the tab order, so Tab from the solved board reaches Undo",
+         $(app, "submit").disabled === true &&
+         (function () {
+           var f = app.doc.querySelectorAll(
+             'input:not([disabled]), button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'), i, ids = [];
+           for (i = 0; i < f.length; i++) {
+             if (f[i].getBoundingClientRect().height > 0) ids.push(f[i].id);
+           }
+           return ids.length === 1 && ids[0] === "undo";
+         }()), "the only focusable control left is Undo");
+      ok("clicking the spent Submit on a solved board changes nothing at all",
+         (function () {
+           var before = app.doc.body.innerText + "|" + msgOf(app) + "|" + app.WL.state().chain.join(" ");
+           submit(app); submit(app);
+           return before === app.doc.body.innerText + "|" + msgOf(app) + "|" + app.WL.state().chain.join(" ");
+         }()), "two clicks, same page");
       ok("the finished ladder is not broken open by an empty rung: the target follows the last word",
          $(app, "word").getBoundingClientRect().height === 0 &&
          $(app, "target").getBoundingClientRect().top >
@@ -1128,11 +1148,28 @@
         }
         return null;
       }());
+      var wonMsg = msgOf(app);
       play(app, beyond);
-      ok("a submit once the ladder reaches the target is refused, not appended",
-         msgOf(app) === "already at the target — Undo to step back" &&
+      // Was: "refused, not appended" — the refusal was the whole defence. Now
+      // there is no control left to refuse: the field is put away and Submit is
+      // spent with it, so a word past the target cannot be submitted at all.
+      // The chain is what matters, and it does not move either way.
+      ok("once the ladder reaches the target there is no control left to append past it",
+         $(app, "submit").disabled === true && msgOf(app) === wonMsg &&
          app.WL.state().chain.join(" ") === chainAtSolve,
          beyond + " -> " + msgOf(app) + " / " + app.WL.state().chain.join(" "));
+      // The state rule behind the spent button, driven the only way left: a
+      // submit event on the form itself. A player cannot get here, but a stored
+      // chain with the target buried mid-way is the shape the loader refuses to
+      // restore, so the guard is not allowed to rot.
+      ok("and the guard under it still refuses a word past the target when the form is submitted directly",
+         (function () {
+           $(app, "word").value = beyond;
+           $(app, "play").requestSubmit();
+           return msgOf(app) === "already at the target — Undo to step back" &&
+                  app.WL.state().chain.join(" ") === chainAtSolve;
+         }()), msgOf(app) + " / " + app.WL.state().chain.join(" "));
+      $(app, "word").value = "";
       ok("and the refusal leaves the target drawn once, as the target line",
          chainWords(app).indexOf(TARGET) === -1 && $(app, "targetlab").textContent === "solved",
          chainWords(app).join(" "));
@@ -1281,13 +1318,20 @@
           }
         }
 
-        // 5. the controls are live and act, in every state
-        if ($(app, "word").disabled || $(app, "submit").disabled) deadCtrl.push(states[si] + " a control is disabled");
+        // 5. every control on the board acts, and any control that cannot act
+        //    is disabled rather than left looking live. On the solved board the
+        //    field is put away and there is nothing for Submit to read, so
+        //    Submit is spent; everywhere else it has to produce a verdict.
+        var atEnd0 = app.WL.state().chain[app.WL.state().chain.length - 1] ===
+                     app.WL.puzzle.target.toUpperCase();
+        if ($(app, "word").disabled) deadCtrl.push(states[si] + " the field is disabled");
+        if ($(app, "submit").disabled !== atEnd0) {
+          deadCtrl.push(states[si] + " Submit is " + ($(app, "submit").disabled ? "disabled" : "live") +
+                        " with the field " + (atEnd0 ? "put away" : "on the board"));
+        }
         var before = app.WL.state().chain.length;
-        var atEnd = app.WL.state().chain[before - 1] === app.WL.puzzle.target.toUpperCase();
         play(app, "ZZZZ");
-        // Whichever verdict the state calls for, Submit has to produce one.
-        if (msgOf(app) !== (atEnd ? "already at the target — Undo to step back" : "ZZZZ isn't in the list")) {
+        if (!atEnd0 && msgOf(app) !== "ZZZZ isn't in the list") {
           deadCtrl.push(states[si] + " Submit did not act: " + JSON.stringify(msgOf(app)));
         }
         $(app, "word").value = "";

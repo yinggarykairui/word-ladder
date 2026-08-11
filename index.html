@@ -743,18 +743,22 @@
     el.target.setAttribute("role", "img");
     el.target.setAttribute("aria-label", TARGET);
 
-    // The puzzle never takes its own controls away: a solved player can undo and
-    // explore, and the win stands regardless, so there is nothing to disable
-    // beyond Undo at the start word. The one exception is the row the field sits
-    // in: a ladder that has reached the target has no next rung, so an empty
-    // field between the last rung and the target is a gap in a finished ladder
-    // and an invitation to type a word that can only be refused. The field is
-    // put away, not disabled — Submit and Undo both stay live, and the first
-    // Undo brings the row straight back.
+    // The puzzle never takes its own controls away while there is a move in
+    // them: a solved player can undo and explore, and the win stands regardless.
+    // The exception is the row the field sits in: a ladder that has reached the
+    // target has no next rung, so an empty field between the last rung and the
+    // target is a gap in a finished ladder and an invitation to type a word that
+    // can only be refused. The field is put away, and Submit goes with it —
+    // cycle 1 put the row away but left Submit live, which made it a control
+    // that reads an empty field, takes the "nothing typed" branch and changes
+    // not one byte of the page: a button that does nothing teaches the player
+    // the button is dead. Disabled, it reads as spent and leaves the tab order,
+    // so Undo is the obvious next move. Undo stays live, and the first Undo
+    // brings the row, the caret and Submit straight back.
     el.word.disabled = false;
     el.inputrow.className = atTarget ? "hidden" : "";
     el.undo.disabled = chain.length <= 1;
-    el.submit.disabled = false;
+    el.submit.disabled = atTarget;
 
     // The bottom word doubles as the win: its label reads "solved" once today's
     // puzzle is done. One word, in the accent, and nothing else moves.
@@ -856,7 +860,9 @@
     // whose target is not the last rung, which is exactly the shape the loader
     // refuses to restore — the day's progress would come back empty on reload.
     // Undo is how you step back and take another route; the win stands either
-    // way, so nothing is lost by refusing here.
+    // way, so nothing is lost by refusing here. Unreachable by hand now that
+    // Submit is disabled at the target and the field is put away — kept as the
+    // guard on the state, not as a message anyone is expected to read.
     if (prev === TARGET) return reject("already at the target — Undo to step back");
     if (w.length < 4) return reject("four letters");
     if (!WORDSET[w.toLowerCase()]) return reject(w + " isn't in the list");
