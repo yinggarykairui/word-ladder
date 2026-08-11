@@ -232,7 +232,13 @@
      ~15px to the field is retargeted into the field by Chromium's touch
      adjustment (5/5 stray taps at 10.2px, 0/5 at 16px). The same threshold as
      the padding above the input, and for the same reason. */
-  .hr { height: 1px; background: var(--rule); margin: 16px 12% clamp(6px, 1.4vh, 12px); }
+  /* Narrow, and deliberately narrower than the field: at 12% inset it was
+     272.1px against a focused input rule of 300.7px, 16.0px apart and 1.40:1
+     against the paper — two near-parallel lines of near-equal length, so on a
+     cold load which one you write on was guesswork. 8rem is the width of the
+     four-letter word under it, which is what it divides off, and about half
+     the width of the field, which is what it must not echo. */
+  .hr { height: 1px; background: var(--rule); width: 8rem; margin: 16px auto clamp(6px, 1.4vh, 12px); }
   #target { color: var(--ink); }
   #target.solved .hot { color: var(--accent); }
 

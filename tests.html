@@ -1588,6 +1588,24 @@
     group("the rejection reason sits with the field, not under the buttons (U3, F2, F3)");
     return openApp("?d=" + REPLAY, 844, 390).then(function (app) {
       var doc = app.doc, msg = $(app, "msg"), ctrls = doc.querySelector(".controls");
+      // Two hairlines of near-equal length 16px apart, and only one of them is
+      // the line you write on. The rule under the field belongs to the target
+      // block, and is sized to the word it divides off rather than to the field
+      // it was mirroring.
+      ok("the rule below the field is not a second field-width line",
+         (function () {
+           var hr = doc.querySelector(".hr").getBoundingClientRect();
+           var inp = $(app, "word").getBoundingClientRect();
+           var t = doc.createRange();
+           t.selectNodeContents($(app, "target"));
+           var ink = t.getBoundingClientRect().width;
+           return hr.width <= inp.width * 0.6 && Math.abs(hr.width - ink) <= 30;
+         }()),
+         (function () {
+           var hr = doc.querySelector(".hr").getBoundingClientRect();
+           return Math.round(hr.width) + "px rule vs " +
+                  Math.round($(app, "word").getBoundingClientRect().width) + "px field";
+         }()));
       ok("the message line comes before the buttons in the document",
          !!(msg.compareDocumentPosition(ctrls) & app.win.Node.DOCUMENT_POSITION_FOLLOWING),
          [].map.call(doc.querySelectorAll("#play > *, main > p"), function (e) {
