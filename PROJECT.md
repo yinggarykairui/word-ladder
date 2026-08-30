@@ -7,6 +7,7 @@ updates it last.
 - Hub issue: [factory-hub#9](https://github.com/yinggarykairui/factory-hub/issues/9) — `queued` → `speccing` → `building`
 - Size: `size:m` · Type: `type:game` · Day 017 (2026-08-10) · manual_version 1.6.1
 - Idea source: seeded (warm-start pack, §16-P0)
+- Increment 2: [factory-hub#50](https://github.com/yinggarykairui/factory-hub/issues/50) · Day 036 (2026-08-30) · manual_version 1.8.0 — the share card and two of the day-017 residuals
 
 ---
 
@@ -31,12 +32,22 @@ The full spec is the comment on issue #9. The load-bearing decisions:
 - **Determinism by seeded PRNG.** `fnv1a32("word-ladder:" + dateStr)` →
   `mulberry32`. `Math.random` must not appear in the file.
 - **Storage: one key, `word-ladder.v1`,** one JSON blob. The key string is
-  identical in the spec, the code, the README and the harness — a harness
-  writing a different key asserts nothing (LESSONS 2026-08-07).
+  identical in the spec, the code and the harness — a harness writing a
+  different key asserts nothing (LESSONS 2026-08-07). (Day 036: this line read
+  "and the README" for twenty days and the README has never named the key. The
+  claim is corrected rather than the README padded — the rule is that the
+  places which *use* the key agree, and the README does not use it.)
 - **The word list is written by hand in this repo.** No download, no vendored
   dictionary, no runtime fetch. Provenance stated in the README.
 - **The exclusion list is a fence,** not a backlog for today. Chiefly: no share
-  card, no hints, no reveal, no archive UI, no dark mode.
+  card, no hints, no reveal, no archive UI, no dark mode. **Day 036: the share
+  card is out of the fence and built** — it was nominated in this file as the
+  first follow-up candidate, and it came back through a revisit issue, which is
+  the door the fence has. The rest of the list stands.
+- **The input rule is a fold, not a strip** (amended day 036, was a literal
+  `replace(/[^A-Za-z]/g, "")`): NFD, drop the combining marks, then strip
+  non-letters and slice to four. See the open thread below for why the build
+  won this argument.
 
 ## 2. Architecture sketch
 
@@ -49,6 +60,8 @@ index.html
 │                     Ladder = one column: START · played rungs · input row ·
 │                     TARGET behind a rule. Tap targets ≥44×44 CSS px; no text
 │                     ever inside another control's hit box (LESSONS 08-09/10).
+│                     The share fallback box stands where the input row stands,
+│                     which is put away exactly when the box can be open.
 └─ <script>
    ├─ WORDS           one inlined space-separated string constant, sorted,
    │                  600–900 entries, split at load. The only "data file".
@@ -65,6 +78,12 @@ index.html
    │                  game, and loads and saves like a plain load — C4).
    ├─ the rule table  the spec's ordered rules, inline in commit(); returns
    │                  a reason, never throws.
+   ├─ share           shareText() — date, moves, par, streak, demo URL, and
+   │                  nothing a player could read a word out of. share() writes
+   │                  it to navigator.clipboard; settle() decides whether the
+   │                  answer still applies to the board it comes back to;
+   │                  shareCopied()/shareFallback() are the two endings, and
+   │                  fitShare() sizes the fallback field to the wrapped line.
    └─ render          textContent only, never innerHTML with player input;
                       one aria-live="polite" message line, replaced not appended.
 
@@ -82,7 +101,8 @@ chain array plus the streak blob.
 
 ## 3. Done-map
 
-Increment 1 (day 017) is the whole of v0. States: `todo` · `wip` · `done` · `cut`.
+Increment 1 (day 017) is the whole of v0. Increment 2 (day 036) is the share
+card and two residuals. States: `todo` · `wip` · `done` · `cut`.
 
 ### Increment 1 — v0, the daily ladder
 
@@ -103,6 +123,24 @@ Increment 1 (day 017) is the whole of v0. States: `todo` · `wip` · `done` · `
 Checklist items 1–7 in the issue comment map to: 1.4/1.5 → item 1; 1.5/1.8 →
 item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → item 6;
 1.10/1.11 → item 7.
+
+### Increment 2 — day 036, the share card
+
+The one fenced-out v0 feature with real pull, plus the two day-017 residuals
+that were decisions rather than instrumentation. Scope and fence:
+[factory-hub#50](https://github.com/yinggarykairui/factory-hub/issues/50).
+
+| # | Item | State |
+|---|------|-------|
+| 2.1 | `shareText()`: date · `solved in N moves · best possible P` · streak, then the demo URL. The status line's exact words, because the README promises the number is named the same way everywhere it appears. No word, no rung, no letter. | done |
+| 2.2 | Share control, live only while the chain ends at the target — the rule the status line and the target label already follow. Says `Copied` for 1.6s, because a copy changes nothing else on the page. | done |
+| 2.3 | The streak clause is omitted under `?d=`, not printed as 0 | done |
+| 2.4 | Clipboard fallback: a read-only field sized to the wrapped line at the width it is read at, pre-selected, re-sized on rotation. Not a graceful extra — `file://` is not a secure context and has no `navigator.clipboard` at all | done |
+| 2.5 | `settle()`: a write that comes back to a board that has moved announces nothing (fix cycle 1) | done |
+| 2.6 | Rung `aria-label`s name the changed position; START and an unplayed TARGET stay bare (residual 13) | done |
+| 2.7 | `#word:disabled` styling restored for the unreachable no-puzzle guard (residual 10) | done |
+| 2.8 | Suite 218 → 264: three clipboard paths, the in-flight guard, both phone viewports, the labels; re-mutated after the fix cycle, 6 of 7 mutants killed | done |
+| 2.9 | README true of the shipped build; `screenshot.png` re-shot on a solved, shared board; provenance footer in the revisit form | done |
 
 ## 4. Open threads
 
@@ -185,7 +223,11 @@ item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → 
   letters silently becoming two. The build normalises to NFD and drops the
   combining marks first, so `sîdé` is `SIDE`. The deviation came from a
   playtest finding (cycle-1 m6) and is kept on purpose; recorded here so the
-  spec and the build stop disagreeing silently.
+  spec and the build stop disagreeing silently. **Closed day 036: the rule is
+  amended, not the build.** Three review cycles and an evening all agreed the
+  folding was the better behaviour and none of them changed the rule it
+  deviated from, so the spec and the build disagreed in the player's favour for
+  twenty days. The fold is now what §1 says the input rule is.
 
 - **The `--chrome` constant is a measured upper bound, and it is guarded.** The
   ladder column's ceiling is `calc(100dvh - var(--chrome))`, where `--chrome`
@@ -203,12 +245,45 @@ item 2; 1.2/1.3/1.8 → item 3; 1.6/1.8 → item 4; 1.7/1.8 → item 5; 1.9 → 
   `if (!PUZ)` guard have never executed on a real date. They stay because the
   word list is editable, but they are uncovered and the code says so.
 
-- **Share card.** The one excluded feature with real pull (TASTE: "make things
-  people share"): a copyable result line like `word-ladder 2026-08-10 · 5 moves
-  (best possible 4) · streak 6`. Cut from v0 because clipboard permissions, a
-  fallback path and a toast are a cycle's worth of edge cases, and two
-  consecutive evenings were lost to polish regressions. **First follow-up
-  candidate** — file it as a revisit issue, do not build it today.
+- **Share card — built day 036.** Cut from v0 because clipboard permissions, a
+  fallback path and a toast were a cycle's worth of edge cases. That estimate
+  was right: the whole of fix cycle 1 went on this feature's edges, and both of
+  the two things v0 chose not to reason about are what the critics found. The
+  clipboard is not a function call, it is a promise that outlives the board it
+  was made about — press Share, Undo, take a longer route, re-solve, and an
+  unguarded resolve says "result copied" over a seven-move ladder for a
+  five-move copy. And the fallback field's height is not a constant: the line
+  wraps to three rendered rows at 390px and four at 320px, so `rows="2"` showed
+  a player the URL with their own result scrolled out of sight above it, under
+  a message telling them to copy the line.
+  Three things are now settled and should not be re-litigated without a reason:
+  the card follows `atTarget` and not `solved`, because `N moves` counts a
+  ladder that reaches the target; the streak clause is omitted rather than
+  zeroed under `?d=`; and the line quotes the status line word for word, since
+  the README promises this number is named the same way everywhere.
+- **Opening the fallback grows the page on a short screen, and that is the
+  law working.** Measured with the box open: 360x640, 390x844 and 1280x800 take
+  it inside the 64px `.roomier` gives back and the document does not move at
+  all; 320x568 grows 25px; 667x375 and 844x390 grow 86px, the column already
+  sitting on its 4.8rem floor. One screenful where there is room for one, an
+  ordinary scrolling page where there is not. The property that has to hold is
+  that the line is fully rendered and fully inside the viewport, which
+  `tests.html` asserts at both phone widths; a still page showing two thirds of
+  the line would have been the wrong trade. If this is ever revisited, the only
+  way to buy the pixels back is to take them off the ladder column, and at
+  320x568 there are 36px between it and its floor — enough, and it would leave
+  two rungs visible on a solved board.
+- **The win moment reflows.** Share arriving divides the button row three ways
+  instead of two: at 390x844 Submit and Undo go 173px → 111.3px and `.controls`
+  rises 32px, at the instant of the win. Left alone deliberately — the
+  alternative is holding a third of the row empty for the whole game — but it
+  is the day's largest unfixed UX finding and it belongs in front of whoever
+  revisits the solved board.
+- **`scrollTop = 0` after `select()` is untested insurance.** A mutant removing
+  it survives the suite, because sizing the field to its content leaves nothing
+  to scroll. Kept as a second line under `fitShare()` rather than deleted;
+  recorded here so it is not mistaken for covered code (cf. the widen/fallback
+  branches above).
 - **The word list is load-bearing on order and contents.** Puzzles are a
   function of the date *and* of the exact list. Any later edit reshuffles every
   past and future puzzle. v0 freezes the list at ship. If the list is ever
