@@ -139,7 +139,7 @@ that were decisions rather than instrumentation. Scope and fence:
 | 2.5 | `settle()`: a write that comes back to a board that has moved announces nothing (fix cycle 1) | done |
 | 2.6 | Rung `aria-label`s name the changed position; START and an unplayed TARGET stay bare (residual 13) | done |
 | 2.7 | `#word:disabled` styling restored for the unreachable no-puzzle guard (residual 10) | done |
-| 2.8 | Suite 218 → 274: three clipboard paths, `settle()`'s three guards told apart, both phone viewports, the labels, the fallback's fit and re-fit. Mutation-tested after each of the two fix cycles; the ship-gate pass killed 17 of 20 | done |
+| 2.8 | Suite 218 → 279: three clipboard paths, `settle()`'s three guards told apart, both phone viewports, the labels, the fallback's fit, its re-fit, the clearance its focus ring needs and the size its text is set at. Mutation-tested after each of the three cycles. This cell has now been stale twice — written at 264 while the suite was 274, corrected to 274 while it was 279 — which is what a hand-copied count does; the number a reader should trust is the one `tests.html` prints | done |
 | 2.9 | README true of the shipped build; `screenshot.png` re-shot on a solved, shared board; provenance footer in the revisit form | done |
 
 ## 4. Open threads
