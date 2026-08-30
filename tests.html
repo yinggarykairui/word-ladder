@@ -194,10 +194,16 @@
 
   function $(app, id) { return app.doc.getElementById(id); }
   function msgOf(app) { return $(app, "msg").textContent; }
-  function chainWords(app) {
+  // The rung's aria-label is the word plus, on a played rung, which letter
+  // changed. Rows that are asking about the ladder want the word; the rows
+  // asking about the label itself use chainLabels() and read it whole.
+  function chainLabels(app) {
     var kids = $(app, "chain").children, a = [], i;
     for (i = 0; i < kids.length; i++) a.push(kids[i].getAttribute("aria-label"));
     return a;
+  }
+  function chainWords(app) {
+    return chainLabels(app).map(function (l) { return l.split(",")[0]; });
   }
   function type(app, text) {
     var inp = $(app, "word");
@@ -255,12 +261,22 @@
       ok("index.html never touches innerHTML", src.indexOf("inner" + "HTML") === -1);
       ok("index.html makes no network calls", src.indexOf("fetch(") === -1 &&
          src.indexOf("XMLHttpRequest") === -1 && src.indexOf("EventSource") === -1);
+      // The file gained exactly one absolute URL on day 036 — the demo link the
+      // share card copies — so "no https:// anywhere" stopped being the test.
+      // It is replaced by the two questions that rule was standing in for: is
+      // anything loaded from off this page, and is that URL still the only one.
       ok("index.html loads no external asset", src.indexOf("http://") === -1 &&
-         src.indexOf("https://") === -1 && !/<script[^>]+src=/i.test(src) && !/<link[^>]+stylesheet/i.test(src));
+         !/<script[^>]+src=/i.test(src) && !/<link[^>]+stylesheet/i.test(src) &&
+         !/(?:src|href)\s*=\s*["']https:/i.test(src));
+      ok("the only absolute URL in index.html is the share link, and nothing fetches it",
+         (src.match(/https:\/\//g) || []).length === 1 &&
+         src.indexOf('"https://yinggarykairui.github.io/word-ladder/"') !== -1,
+         (src.match(/https:\/\/[^"'\s]*/g) || []).join(" "));
       ok("index.html uses the storage key word-ladder.v1", src.indexOf('"word-ladder.v1"') !== -1);
     }, function () {
       ["contains no Math.random", "calls no local-time date getters", "never touches innerHTML",
-       "makes no network calls", "loads no external asset", "uses the storage key word-ladder.v1"]
+       "makes no network calls", "loads no external asset",
+       "carries the share link as its only absolute URL", "uses the storage key word-ladder.v1"]
         .forEach(function (n) { skipped("index.html " + n, "source unreadable from file:// — serve over http"); });
     });
   }
@@ -371,16 +387,26 @@
     // scroll, so it is not a tab stop: a Shift-Tab out of the input used to
     // land there with nothing hidden in it and no way to tell that from a dead
     // stop. It becomes one the moment it overflows (rows in the sweep below).
+    // Rendered, not merely present: the share button and its fallback field are
+    // in the markup from load and display:none until the ladder reaches the
+    // target, so a query that counts markup counts controls no Tab can reach.
+    function tabbables(app) {
+      var f = app.doc.querySelectorAll(
+        'input, button, a[href], select, textarea, [tabindex]:not([tabindex="-1"])'), i, out = [];
+      for (i = 0; i < f.length; i++) if (f[i].getClientRects().length) out.push(f[i]);
+      return out;
+    }
     ok("tab order is the input, then Submit, then Undo, with nothing focusable between the three controls",
        (function () {
-         var f = app.doc.querySelectorAll(
-           'input, button, a[href], select, textarea, [tabindex]:not([tabindex="-1"])');
+         var f = tabbables(app);
          return f.length === 3 && f[0].id === "word" &&
                 f[1].id === "submit" && f[2].id === "undo";
-       }()), (function () {
-         var f = app.doc.querySelectorAll('input, button, a[href], select, textarea, [tabindex]:not([tabindex="-1"])');
-         return [].map.call(f, function (e) { return e.id; }).join(" > ");
-       }()));
+       }()), tabbables(app).map(function (e) { return e.id; }).join(" > "));
+    ok("the share controls are not on a board that has not been solved",
+       $(app, "share").getClientRects().length === 0 &&
+       $(app, "sharebox").getClientRects().length === 0 &&
+       $(app, "share").className === "hidden" && $(app, "sharebox").className === "hidden",
+       "share " + $(app, "share").className + ", sharebox " + $(app, "sharebox").className);
     ok("the ladder column is not a tab stop while there is nothing in it to scroll",
        $(app, "chainbox").tabIndex === -1 &&
        $(app, "chainbox").scrollHeight <= $(app, "chainbox").clientHeight,
@@ -672,16 +698,20 @@
          $(app, "undo").getBoundingClientRect().height >= 44,
          "word " + $(app, "word").disabled + ", submit " + $(app, "submit").disabled +
          ", undo " + $(app, "undo").disabled);
-      ok("a disabled Submit is out of the tab order, so Tab from the solved board reaches Undo",
+      // Two live controls on a solved board since day 036: Undo, which is the
+      // way back, and Share, which is the thing there is to do with a win.
+      // Submit is disabled and out of the order; the fallback field is not
+      // rendered until a clipboard write has actually failed.
+      ok("a disabled Submit is out of the tab order, so Tab from the solved board reaches Undo then Share",
          $(app, "submit").disabled === true &&
          (function () {
            var f = app.doc.querySelectorAll(
-             'input:not([disabled]), button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'), i, ids = [];
+             'input:not([disabled]), button:not([disabled]), a[href], textarea, [tabindex]:not([tabindex="-1"])'), i, ids = [];
            for (i = 0; i < f.length; i++) {
              if (f[i].getBoundingClientRect().height > 0) ids.push(f[i].id);
            }
-           return ids.length === 1 && ids[0] === "undo";
-         }()), "the only focusable control left is Undo");
+           return ids.join(" ") === "undo share";
+         }()), "the live controls are Undo and Share");
       ok("clicking the spent Submit on a solved board changes nothing at all",
          (function () {
            var before = app.doc.body.innerText + "|" + msgOf(app) + "|" + app.WL.state().chain.join(" ");
@@ -1832,6 +1862,222 @@
 
   /* ------------------------------ run ------------------------------- */
 
+  /* ------------------------- the share card ------------------------- */
+
+  function solvePath(app) {
+    var path = app.WL.pathOf(app.WL.puzzle).map(function (x) { return x.toUpperCase(); }), i;
+    for (i = 1; i < path.length; i++) play(app, path[i]);
+    return path;
+  }
+
+  // A clipboard that is not there, and a clipboard that says no. Both are
+  // reachable on a real machine — file:// is not a secure context and has no
+  // navigator.clipboard at all, and a permissions policy makes writeText
+  // reject on https — so both are rows here rather than a comment about a
+  // branch nobody runs. navigator.clipboard is a prototype getter, so an own
+  // property is what shadows it.
+  function fakeClipboard(app, mode) {
+    var calls = [];
+    var value = mode === "absent" ? undefined : {
+      writeText: function (t) {
+        calls.push(t);
+        return mode === "reject" ? Promise.reject(new Error("denied")) : Promise.resolve();
+      }
+    };
+    try {
+      Object.defineProperty(app.win.navigator, "clipboard",
+        { configurable: true, get: function () { return value; } });
+    } catch (e) { /* ignore */ }
+    return calls;
+  }
+
+  // Every character of the line is either a literal from this template or a
+  // digit. That is the spoiler rule stated as a shape: there is nowhere in it
+  // for a word to hide, whoever played it and however they got there.
+  var SHARE_RE = /^word ladder \d{4}-\d{2}-\d{2} · \d+ moves? \(best possible \d+\) · streak \d+\nhttps:\/\/yinggarykairui\.github\.io\/word-ladder\/$/;
+  var SHARE_RE_REPLAY = /^word ladder \d{4}-\d{2}-\d{2} · \d+ moves? \(best possible \d+\)\nhttps:\/\/yinggarykairui\.github\.io\/word-ladder\/$/;
+
+  function shareCard() {
+    var app;
+    seed(null);
+    return openApp("", 390, 844).then(function (a) {
+      app = a;
+      group("the share card — the result travels, the puzzle does not");
+
+      var beforeSolve = $(app, "share").getClientRects().length;
+      var path = solvePath(app);
+      var text = app.WL.shareText();
+
+      ok("Share is not on the board until the ladder reaches the target",
+         beforeSolve === 0 && $(app, "share").getClientRects().length > 0,
+         "before " + beforeSolve + " rects, after " + $(app, "share").getClientRects().length);
+
+      ok("the line is the template and digits, and nothing else",
+         SHARE_RE.test(text), JSON.stringify(text));
+
+      ok("no word of the day's ladder appears in it",
+         (function () {
+           var lower = text.toLowerCase(), i;
+           for (i = 0; i < path.length; i++) if (lower.indexOf(path[i].toLowerCase()) !== -1) return false;
+           return lower.indexOf(app.WL.puzzle.target) === -1 && lower.indexOf(app.WL.puzzle.start) === -1;
+         }()), path.join(" ") + " — none of them in " + JSON.stringify(text.split("\n")[0]));
+
+      ok("the counts in it are the counts on the page",
+         text.indexOf(" " + (path.length - 1) + " moves (best possible " + app.WL.puzzle.par + ")") !== -1 &&
+         $(app, "status").textContent.indexOf("solved in " + (path.length - 1) + " moves") !== -1,
+         $(app, "status").textContent);
+
+      // R1's invariant, extended to the control added today: no sequence of UI
+      // actions may produce a stored chain that legalChain rejects. The safest
+      // form of that for a button that is not supposed to touch the game at all
+      // is that it touches neither the chain nor the blob.
+      var blobBefore = stored(), chainBefore = app.WL.state().chain.join(" ");
+      var calls = fakeClipboard(app, "ok");
+      $(app, "share").click();
+      return new Promise(function (r) { setTimeout(r, 30); }).then(function () {
+        ok("Share appends nothing to the chain and writes nothing to storage",
+           app.WL.state().chain.join(" ") === chainBefore && stored() === blobBefore,
+           "chain " + app.WL.state().chain.join(" "));
+        ok("a clipboard that takes it is told exactly what the page says it copied",
+           calls.length === 1 && calls[0] === text, calls.length + " write(s)");
+        ok("a copy the player cannot see is announced in the live region",
+           msgOf(app) === "result copied" && $(app, "sharebox").getClientRects().length === 0,
+           msgOf(app) + " · box " + $(app, "sharebox").className);
+
+        // The fallback, twice: a clipboard that is not there and one that says no.
+        var calls2 = fakeClipboard(app, "absent");
+        $(app, "share").click();
+        return new Promise(function (r) { setTimeout(r, 30); }).then(function () {
+          var ta = $(app, "sharetext");
+          ok("with no clipboard at all the line is on the page, selected, with somewhere to copy it from",
+             ta.getClientRects().length > 0 && ta.value === text &&
+             ta.selectionStart === 0 && ta.selectionEnd === ta.value.length &&
+             app.doc.activeElement === ta && msgOf(app).indexOf("copy this line") === 0,
+             "value " + JSON.stringify(ta.value) + " · msg " + msgOf(app));
+          ok("the fallback field is read-only, so the line cannot be edited into a claim the page did not make",
+             ta.readOnly === true && ta.tagName === "TEXTAREA", ta.tagName + " readOnly " + ta.readOnly);
+
+          var calls3 = fakeClipboard(app, "reject");
+          $(app, "share").click();
+          return new Promise(function (r) { setTimeout(r, 30); }).then(function () {
+            ok("a clipboard that rejects lands in the same fallback, not in an unhandled rejection",
+               calls3.length === 1 && $(app, "sharetext").getClientRects().length > 0 &&
+               msgOf(app).indexOf("copy this line") === 0 && app.errors.length === 0,
+               app.errors.join(" ") || "no errors, box open");
+
+            // Undo is the move back to play, and a result line for a ladder
+            // that no longer reaches the target is not a result.
+            $(app, "undo").click();
+            ok("stepping off the target puts the share card away and the caret back in the field",
+               $(app, "share").getClientRects().length === 0 &&
+               $(app, "sharebox").getClientRects().length === 0 &&
+               app.WL.state().shareOpen === false &&
+               app.doc.activeElement === $(app, "word"),
+               "share " + $(app, "share").className + ", box " + $(app, "sharebox").className +
+               ", focus " + (app.doc.activeElement && app.doc.activeElement.id));
+            ok("no error was thrown anywhere in the share paths", app.errors.length === 0,
+               app.errors.join(" ") || "clean");
+            app.close();
+          });
+        });
+      });
+    }).then(function () {
+      return openApp("?d=" + REPLAY, 390, 844);
+    }).then(function (app) {
+      group("the share card under ?d= — a replay has no streak to claim");
+      solvePath(app);
+      var text = app.WL.shareText(), blobBefore = stored();
+      ok("the streak clause is omitted, not printed as zero",
+         SHARE_RE_REPLAY.test(text) && text.indexOf("streak") === -1, JSON.stringify(text));
+      fakeClipboard(app, "absent");
+      $(app, "share").click();
+      return new Promise(function (r) { setTimeout(r, 30); }).then(function () {
+        ok("pressing Share on a replay writes nothing to storage",
+           stored() === blobBefore, "blob unchanged");
+        ok("the fallback still opens on a replay board", $(app, "sharetext").getClientRects().length > 0,
+           $(app, "sharebox").className);
+        app.close();
+      });
+    });
+  }
+
+  // The share control is subject to the same layout law as every other control
+  // on this page: reachable, big enough for a thumb, and not growing the
+  // document off the bottom of a phone.
+  function shareLayout(w, h) {
+    var label = w + "x" + h;
+    seed(null);
+    return openApp("", w, h).then(function (app) {
+      group("the share card's layout at " + label);
+      var de = app.doc.documentElement;
+      solvePath(app);
+      var sb = $(app, "share").getBoundingClientRect();
+      ok("Share is at least 44x44 at " + label,
+         sb.width >= 44 && sb.height >= 44,
+         Math.round(sb.width * 10) / 10 + "x" + Math.round(sb.height * 10) / 10);
+      ok("Share is inside the viewport at " + label,
+         sb.top >= -0.5 && sb.bottom <= app.win.innerHeight + 0.5,
+         "top " + Math.round(sb.top) + " bottom " + Math.round(sb.bottom) + " of " + app.win.innerHeight);
+      ok("Share does not overlap Undo at " + label,
+         (function () {
+           var u = $(app, "undo").getBoundingClientRect();
+           return sb.left >= u.right - 0.5 || sb.right <= u.left + 0.5;
+         }()), "share " + Math.round(sb.left) + "-" + Math.round(sb.right) +
+               ", undo " + Math.round($(app, "undo").getBoundingClientRect().left) + "-" +
+               Math.round($(app, "undo").getBoundingClientRect().right));
+      var solvedH = de.scrollHeight;
+      fakeClipboard(app, "absent");
+      $(app, "share").click();
+      return new Promise(function (r) { setTimeout(r, 30); }).then(function () {
+        var ta = $(app, "sharetext").getBoundingClientRect();
+        // The open fallback stands in the input row's place and takes back the
+        // 64px .roomier lends the column, so the page is the same height with
+        // it open as it was without it — --chrome does not need re-measuring.
+        ok("the open fallback does not grow the page at " + label,
+           de.scrollHeight <= de.clientHeight + 1 && de.scrollHeight <= solvedH + 1,
+           de.scrollHeight + " <= " + de.clientHeight + " (was " + solvedH + " closed)");
+        ok("no horizontal scroll with the fallback open at " + label,
+           de.scrollWidth <= de.clientWidth, de.scrollWidth + " <= " + de.clientWidth);
+        ok("the fallback field is at least 44px tall at " + label, ta.height >= 44,
+           Math.round(ta.height * 10) / 10 + "px");
+        ok("the fallback field is inside the viewport at " + label,
+           ta.top >= -0.5 && ta.bottom <= app.win.innerHeight + 0.5,
+           "top " + Math.round(ta.top) + " bottom " + Math.round(ta.bottom) + " of " + app.win.innerHeight);
+        app.close();
+      });
+    });
+  }
+
+  // Residual 13: which letter changed was colour and weight and nothing else.
+  function rungLabels() {
+    return openApp("?d=" + REPLAY, 390, 844).then(function (app) {
+      group("a rung says which letter changed, in words as well as in ink");
+      var path = solvePath(app), labels = chainLabels(app), ORD = ["1st", "2nd", "3rd", "4th"], i, bad = [];
+      ok("the start word is announced bare — it has no rung above it to have changed from",
+         labels[0] === path[0], labels[0]);
+      for (i = 1; i < labels.length; i++) {
+        var hot = -1, k;
+        for (k = 0; k < 4; k++) if (path[i].charAt(k) !== path[i - 1].charAt(k)) { hot = k; break; }
+        if (labels[i] !== path[i] + ", " + ORD[hot] + " letter changed") bad.push(labels[i]);
+      }
+      ok("every played rung below the start names the position that changed",
+         bad.length === 0 && labels.length > 1, bad.join(" ; ") || labels.slice(1).join(" ; "));
+      ok("the reached target names its changed letter too",
+         $(app, "target").getAttribute("aria-label") ===
+           path[path.length - 1] + ", " + (function () {
+             var a = path[path.length - 1], b = path[path.length - 2], k;
+             for (k = 0; k < 4; k++) if (a.charAt(k) !== b.charAt(k)) return ORD[k];
+             return "?";
+           }()) + " letter changed",
+         $(app, "target").getAttribute("aria-label"));
+      undoAll(app);
+      ok("an unplayed target is announced bare, because nothing has changed into it yet",
+         $(app, "target").getAttribute("aria-label") === path[path.length - 1].toUpperCase(),
+         $(app, "target").getAttribute("aria-label"));
+      app.close();
+    });
+  }
+
   function finish() {
     try { if (saved === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, saved); }
     catch (e) { /* ignore */ }
@@ -1865,7 +2111,11 @@
       .then(function () { return messagePlacement(); })
       .then(function () { return centring(); })
       .then(function () { return rotation(); })
-      .then(function () { return heightSweepAll(); });
+      .then(function () { return heightSweepAll(); })
+      .then(function () { return shareCard(); })
+      .then(function () { return shareLayout(320, 568); })
+      .then(function () { return shareLayout(390, 844); })
+      .then(function () { return rungLabels(); });
   }).then(finish, function (err) {
     group("harness");
     if (String(err.message) === "sandboxed") {
