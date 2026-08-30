@@ -264,6 +264,35 @@
   }
   #inputrow.hidden { display: none; }
 
+  /* The share line only ever appears while the ladder ends at the target — the
+     one state where the input row is already put away and .roomier has lent the
+     column the 64px it cost. Opening this takes that 64px back (render() drops
+     .roomier while it is open), so the page is the same height with it as
+     without, and --chrome — a measured upper bound on everything that is not
+     the chain — stays true without being re-measured. */
+  #sharebox { padding: 16px 0 0; }
+  #sharetext {
+    display: block;
+    width: 84%;
+    min-height: 48px;
+    margin: 0 auto;
+    padding: 6px 8px;
+    border: 1px dashed var(--edge);
+    border-radius: 2px;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--ui-font);
+    font-size: 0.78rem;
+    line-height: 1.5;
+    text-align: center;
+    resize: none;
+    overflow: auto;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  #sharetext:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #sharebox.hidden, #share.hidden { display: none; }
+
   /* 16px, not a scaled gap: measured, a tap on this hairline any closer than
      ~15px to the field is retargeted into the field by Chromium's touch
      adjustment (5/5 stray taps at 10.2px, 0/5 at 16px). The same threshold as
@@ -355,6 +384,21 @@
     <div class="controls">
       <button id="submit" type="submit">Submit</button>
       <button id="undo" type="button">Undo</button>
+      <!-- Only on the board while the ladder stands in the target, for the same
+           reason the status line only says "solved in N moves" there: N is
+           chain.length - 1, and one Undo later that is a count of a ladder that
+           no longer reaches the target. -->
+      <button id="share" type="button" class="hidden">Share</button>
+    </div>
+
+    <!-- The fallback, not a stretch goal: navigator.clipboard is undefined on
+         file://, which is a way this page is meant to be run (README: "open
+         index.html in any browser"), and writeText can reject under a
+         permissions policy even on https. A Share that silently does nothing
+         there is worse than no Share at all. -->
+    <div id="sharebox" class="hidden">
+      <textarea id="sharetext" rows="2" readonly spellcheck="false"
+                aria-label="your result, ready to copy"></textarea>
     </div>
   </form>
 </main>
@@ -704,6 +748,9 @@
     form: document.getElementById("play"),
     submit: document.getElementById("submit"),
     undo: document.getElementById("undo"),
+    share: document.getElementById("share"),
+    sharebox: document.getElementById("sharebox"),
+    sharetext: document.getElementById("sharetext"),
     msg: document.getElementById("msg")
   };
 
@@ -865,7 +912,15 @@
     el.inputrow.className = atTarget ? "hidden" : "";
     // The row is off the page at the target, so the ladder may have the height
     // --chrome is still holding for it.
-    el.chainbox.classList.toggle("roomier", atTarget);
+    // Stepping off the target puts the board back to play, and a share line for
+    // a ladder that no longer reaches the target is not a result any more.
+    if (!atTarget) shareOpen = false;
+    el.share.className = atTarget ? "" : "hidden";
+    el.sharebox.className = shareOpen ? "" : "hidden";
+    // The 64px .roomier lends the column is the input row's; the open share box
+    // is standing in it, so it cannot be lent twice.
+    el.chainbox.classList.toggle("roomier", atTarget && !shareOpen);
+    if (atTarget) el.sharetext.value = shareText();
     el.undo.disabled = chain.length <= 1;
     el.submit.disabled = atTarget;
 
@@ -1102,6 +1157,65 @@
     else el.word.focus();
   }
 
+  /* ---------------------------- share --------------------------------- */
+
+  // The result line, and the one rule it has to keep: it says how the ladder
+  // went, never what was in it. No start word, no target, no rung, no letter —
+  // a player who has not played today can read it without the puzzle being
+  // spoiled, which is the whole reason a daily puzzle travels.
+  var DEMO_URL = "https://yinggarykairui.github.io/word-ladder/";
+  var shareOpen = false;
+
+  function shareText() {
+    var moves = chain.length - 1;
+    var line = "word ladder " + puzzleDate + " · " +
+      moves + (moves === 1 ? " move" : " moves") +
+      " (best possible " + PUZ.par + ")";
+    // A replay has no streak to claim. Omitted rather than printed as 0: the
+    // header already says nothing is being saved, and "streak 0" would read as
+    // a score rather than as an absence.
+    if (!readOnly) line += " · streak " + shownStreak();
+    return line + "\n" + DEMO_URL;
+  }
+
+  // Nothing on the page changes when a clipboard write succeeds, so the message
+  // line is the only evidence the player gets that anything happened.
+  function shareCopied() {
+    shareOpen = false;
+    render();
+    say("result copied");
+  }
+
+  // navigator.clipboard is undefined on file:// — not a secure context, and
+  // opening index.html directly is a documented way to run this — and
+  // writeText() can reject behind a permissions policy even on https. Either
+  // way the player still gets the line, selected, with somewhere to copy it
+  // from. This is the path that has to work, not the graceful extra.
+  function shareFallback() {
+    shareOpen = true;
+    render();
+    say("copy this line — the clipboard isn't available here");
+    try { el.sharetext.focus(); el.sharetext.select(); } catch (e) { /* ignore */ }
+    // Same reasoning as reject(): on a short screen the thing the player is
+    // being told to act on can be below the fold, and `nearest` scrolls the
+    // page only when it actually is.
+    try { el.sharebox.scrollIntoView({ block: "nearest" }); } catch (e) { /* ignore */ }
+  }
+
+  function share() {
+    var text = shareText(), wrote = null;
+    el.sharetext.value = text;
+    // Reading navigator.clipboard can itself throw in a sandboxed frame, and
+    // writeText can throw synchronously rather than reject.
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        wrote = navigator.clipboard.writeText(text);
+      }
+    } catch (e) { wrote = null; }
+    if (!wrote || typeof wrote.then !== "function") return shareFallback();
+    wrote.then(shareCopied, shareFallback);
+  }
+
   function undo() {
     if (chain.length <= 1) return;
     var undoHadFocus = document.activeElement === el.undo;
@@ -1155,6 +1269,7 @@
   });
   el.form.addEventListener("submit", function (e) { e.preventDefault(); commit(); });
   el.undo.addEventListener("click", undo);
+  el.share.addEventListener("click", share);
   // A rotation changes how much of the ladder fits without changing the ladder.
   window.addEventListener("resize", fitColumn);
   // Scrolled by hand, by the arrow keys or by the wheel: the same edge, the
@@ -1175,7 +1290,8 @@
     fnv1a32: fnv1a32, mulberry32: mulberry32,
     puzzleFor: puzzleFor, pathOf: pathOf, diffCount: diffCount,
     puzzle: PUZ, puzzleDate: puzzleDate, readOnly: readOnly, today: today,
-    state: function () { return { chain: chain.slice(), solved: solved }; }
+    shareText: shareText,
+    state: function () { return { chain: chain.slice(), solved: solved, shareOpen: shareOpen }; }
   };
 }());
 </script>
