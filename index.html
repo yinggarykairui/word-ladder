@@ -267,9 +267,19 @@
   /* The share line only ever appears while the ladder ends at the target — the
      one state where the input row is already put away and .roomier has lent the
      column the 64px it cost. Opening this takes that 64px back (render() drops
-     .roomier while it is open), so the page is the same height with it as
-     without, and --chrome — a measured upper bound on everything that is not
-     the chain — stays true without being re-measured. */
+     .roomier while it is open), which is most of what it needs; the field is
+     then sized to the line at the width it wraps at, so what it needs is not a
+     constant and --chrome cannot be asked to hold it.
+     Measured with the box open, portrait first: 360x640, 390x844 and 1280x800
+     take it inside the 64px and the document does not grow by one pixel. At
+     320x568 the page grows 25px, and at 667x375 and 844x390 — the column
+     already sitting on its 4.8rem floor — 86px. That is this page's stated law
+     working, not failing it: one screenful where there is room for one, an
+     ordinary scrolling page where there is not (PROJECT.md, open threads). The
+     line the player has been told to copy is fully rendered and fully inside
+     the viewport at all six, which is the property that had to hold; a
+     shorter box that hid a third of the line while keeping the page still
+     would have been the wrong trade. */
   #sharebox { padding: 16px 0 0; }
   #sharetext {
     display: block;
@@ -1165,12 +1175,20 @@
   // spoiled, which is the whole reason a daily puzzle travels.
   var DEMO_URL = "https://yinggarykairui.github.io/word-ladder/";
   var shareOpen = false;
+  var shareSeq = 0;
+  var copiedTimer = 0;
 
   function shareText() {
+    // The same number named the same way everywhere it appears, which is a
+    // promise the README makes: the status line two elements up reads
+    // "solved in 5 moves · best possible 5" and so does this. The first draft
+    // wrote "5 moves (best possible 5)" and broke that promise in the one place
+    // the number leaves the page. No singular branch: par is 3-5 by
+    // construction, so a solved ladder is never one move long, and a branch the
+    // build cannot reach is a branch nothing can test.
     var moves = chain.length - 1;
-    var line = "word ladder " + puzzleDate + " · " +
-      moves + (moves === 1 ? " move" : " moves") +
-      " (best possible " + PUZ.par + ")";
+    var line = "word ladder " + puzzleDate +
+      " · solved in " + moves + " moves · best possible " + PUZ.par;
     // A replay has no streak to claim. Omitted rather than printed as 0: the
     // header already says nothing is being saved, and "streak 0" would read as
     // a score rather than as an absence.
@@ -1181,9 +1199,26 @@
   // Nothing on the page changes when a clipboard write succeeds, so the message
   // line is the only evidence the player gets that anything happened.
   function shareCopied() {
+    var hadFocus = shareOpen && document.activeElement === el.sharetext;
     shareOpen = false;
     render();
     say("result copied");
+    // Two writes can be in flight at once, and the box the first one puts away
+    // may be the box the second one just put the caret in. render() has already
+    // set it display:none, which drops activeElement to <body> — the same fall
+    // the load path and commit() are both written to avoid.
+    if (hadFocus) { try { el.share.focus(); } catch (e) { /* ignore */ } }
+    // The button acknowledges its own press. A copy changes nothing else on the
+    // page, and the message line 17px above it is the same slot every refusal
+    // has used all game, so on a phone — thumb over the button — the press read
+    // as dead and got made twice. Six letters, the width SUBMIT already proves
+    // fits at 320px, so the row does not reflow to say it.
+    el.share.textContent = "Copied";
+    if (copiedTimer) clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(function () {
+      copiedTimer = 0;
+      el.share.textContent = "Share";
+    }, 1600);
   }
 
   // navigator.clipboard is undefined on file:// — not a secure context, and
@@ -1191,11 +1226,35 @@
   // writeText() can reject behind a permissions policy even on https. Either
   // way the player still gets the line, selected, with somewhere to copy it
   // from. This is the path that has to work, not the graceful extra.
+  // The height the line actually takes at the width it is actually being read
+  // at. scrollHeight is a border-box measurement here, so the borders are added
+  // back or the field lands 2px short of its own content — which is enough to
+  // clip the descenders off the last line and nothing more, the most annoying
+  // possible amount to be wrong by.
+  function fitShare() {
+    var ta = el.sharetext;
+    ta.style.height = "auto";
+    ta.style.height = (ta.scrollHeight + (ta.offsetHeight - ta.clientHeight)) + "px";
+  }
+
   function shareFallback() {
     shareOpen = true;
     render();
     say("copy this line — the clipboard isn't available here");
+    // rows="2" was sized against the string, not against the box the string
+    // wraps inside: at 390px the line takes three rendered rows and at 320px it
+    // takes four, so a fixed two-row field hid 19px and 38px of it — and
+    // select() scrolls a field to the end of its selection, which at 320px left
+    // the player looking at the URL with their own result scrolled out of sight
+    // above it, under a message telling them to copy the line. The field is
+    // sized to what it is actually holding, at the width it is actually being
+    // held at, every time it opens.
+    fitShare();
     try { el.sharetext.focus(); el.sharetext.select(); } catch (e) { /* ignore */ }
+    // select() scrolls a field to the end of its selection. Sized to fit there
+    // is nothing to scroll, but the assignment costs nothing and the row that
+    // proves the whole line is on screen should not depend on that.
+    el.sharetext.scrollTop = 0;
     // Same reasoning as reject(): on a short screen the thing the player is
     // being told to act on can be below the fold, and `nearest` scrolls the
     // page only when it actually is.
@@ -1203,7 +1262,7 @@
   }
 
   function share() {
-    var text = shareText(), wrote = null;
+    var text = shareText(), wrote = null, seq = ++shareSeq;
     el.sharetext.value = text;
     // Reading navigator.clipboard can itself throw in a sandboxed frame, and
     // writeText can throw synchronously rather than reject.
@@ -1213,7 +1272,23 @@
       }
     } catch (e) { wrote = null; }
     if (!wrote || typeof wrote.then !== "function") return shareFallback();
-    wrote.then(shareCopied, shareFallback);
+    wrote.then(function () { settle(seq, text, true); },
+               function () { settle(seq, text, false); });
+  }
+
+  // A clipboard write outlives the board it was made about. The player can Undo
+  // between the press and the promise, and a permission prompt makes that gap
+  // seconds long — long enough to undo, take a longer route and re-solve. A
+  // settle that is not the latest press, that lands on a board no longer
+  // standing in the target, or whose line is no longer what the board would say,
+  // announces nothing: without this, "result copied" appeared over a seven-move
+  // ladder for a five-move copy, and "copy this line" appeared on a board with
+  // no line and no box anywhere on it.
+  function settle(seq, text, copied) {
+    if (seq !== shareSeq) return;
+    if (chain[chain.length - 1] !== TARGET) return;
+    if (text !== shareText()) return;
+    if (copied) shareCopied(); else shareFallback();
   }
 
   function undo() {
@@ -1271,7 +1346,12 @@
   el.undo.addEventListener("click", undo);
   el.share.addEventListener("click", share);
   // A rotation changes how much of the ladder fits without changing the ladder.
-  window.addEventListener("resize", fitColumn);
+  window.addEventListener("resize", function () {
+    fitColumn();
+    // A rotation changes the width the share line wraps at without touching the
+    // line: sized for portrait and read in landscape, the field clipped again.
+    if (shareOpen) fitShare();
+  });
   // Scrolled by hand, by the arrow keys or by the wheel: the same edge, the
   // same question.
   el.chainbox.addEventListener("scroll", fade);

@@ -1894,8 +1894,36 @@
   // Every character of the line is either a literal from this template or a
   // digit. That is the spoiler rule stated as a shape: there is nowhere in it
   // for a word to hide, whoever played it and however they got there.
-  var SHARE_RE = /^word ladder \d{4}-\d{2}-\d{2} · \d+ moves? \(best possible \d+\) · streak \d+\nhttps:\/\/yinggarykairui\.github\.io\/word-ladder\/$/;
-  var SHARE_RE_REPLAY = /^word ladder \d{4}-\d{2}-\d{2} · \d+ moves? \(best possible \d+\)\nhttps:\/\/yinggarykairui\.github\.io\/word-ladder\/$/;
+  var SHARE_RE = /^word ladder \d{4}-\d{2}-\d{2} · solved in \d+ moves · best possible \d+ · streak \d+\nhttps:\/\/yinggarykairui\.github\.io\/word-ladder\/$/;
+  var SHARE_RE_REPLAY = /^word ladder \d{4}-\d{2}-\d{2} · solved in \d+ moves · best possible \d+\nhttps:\/\/yinggarykairui\.github\.io\/word-ladder\/$/;
+
+  // A fixed setTimeout is a bet on the frame budget of an off-screen iframe.
+  // The first version of these rows bet 30ms and lost about one run in five —
+  // see the note on say()'s repeat branch in the share group below.
+  function waitFor(pred, ms) {
+    var t0 = Date.now();
+    return new Promise(function (res) {
+      (function tick() {
+        var done = false;
+        try { done = pred(); } catch (e) { done = false; }
+        if (done || Date.now() - t0 > (ms || 2000)) return res();
+        setTimeout(tick, 10);
+      }());
+    });
+  }
+
+  // localStorage.setItem, counted rather than inferred. Comparing the blob
+  // before and after cannot see a write of identical bytes, so the row that
+  // said "Share writes nothing to storage" passed a mutant that called save().
+  function countWrites(app) {
+    var n = { writes: 0 };
+    var ls = app.win.localStorage, real = ls.setItem;
+    n.stop = function () { try { ls.setItem = real; } catch (e) { /* ignore */ } };
+    try {
+      ls.setItem = function () { n.writes++; return real.apply(ls, arguments); };
+    } catch (e) { n.unavailable = true; }
+    return n;
+  }
 
   function shareCard() {
     var app;
@@ -1922,64 +1950,99 @@
            return lower.indexOf(app.WL.puzzle.target) === -1 && lower.indexOf(app.WL.puzzle.start) === -1;
          }()), path.join(" ") + " — none of them in " + JSON.stringify(text.split("\n")[0]));
 
-      ok("the counts in it are the counts on the page",
-         text.indexOf(" " + (path.length - 1) + " moves (best possible " + app.WL.puzzle.par + ")") !== -1 &&
-         $(app, "status").textContent.indexOf("solved in " + (path.length - 1) + " moves") !== -1,
-         $(app, "status").textContent);
+      // README: "the same number is named the same way everywhere it appears".
+      // The share line is a third place it appears, so it owes that promise the
+      // status line's exact words, not a paraphrase of them.
+      ok("the number is named the same way in the share line as on the status line",
+         text.indexOf("solved in " + (path.length - 1) + " moves · best possible " + app.WL.puzzle.par) !== -1 &&
+         $(app, "status").textContent === "solved in " + (path.length - 1) +
+           " moves · best possible " + app.WL.puzzle.par,
+         $(app, "status").textContent + "  ||  " + text.split("\n")[0]);
 
       // R1's invariant, extended to the control added today: no sequence of UI
       // actions may produce a stored chain that legalChain rejects. The safest
       // form of that for a button that is not supposed to touch the game at all
       // is that it touches neither the chain nor the blob.
-      var blobBefore = stored(), chainBefore = app.WL.state().chain.join(" ");
+      var counter = countWrites(app), chainBefore = app.WL.state().chain.join(" ");
       var calls = fakeClipboard(app, "ok");
       $(app, "share").click();
-      return new Promise(function (r) { setTimeout(r, 30); }).then(function () {
-        ok("Share appends nothing to the chain and writes nothing to storage",
-           app.WL.state().chain.join(" ") === chainBefore && stored() === blobBefore,
-           "chain " + app.WL.state().chain.join(" "));
+      return waitFor(function () { return msgOf(app) === "result copied"; }).then(function () {
+        // Counted, not inferred: comparing the blob before and after cannot see
+        // a write of identical bytes, and a deliberate save() inside the copy
+        // path passed that version of this row.
+        ok("Share appends nothing to the chain and calls setItem not once",
+           app.WL.state().chain.join(" ") === chainBefore && counter.writes === 0,
+           counter.writes + " setItem call(s), chain " + app.WL.state().chain.join(" "));
+        counter.stop();
         ok("a clipboard that takes it is told exactly what the page says it copied",
            calls.length === 1 && calls[0] === text, calls.length + " write(s)");
         ok("a copy the player cannot see is announced in the live region",
            msgOf(app) === "result copied" && $(app, "sharebox").getClientRects().length === 0,
            msgOf(app) + " · box " + $(app, "sharebox").className);
+        // A copy changes nothing else on the page, so the control acknowledges
+        // its own press — and gives it back, or the board keeps a stale word on
+        // a button that is live again.
+        ok("the button says it copied, and stops saying it",
+           $(app, "share").textContent === "Copied", $(app, "share").textContent);
+        return waitFor(function () { return $(app, "share").textContent === "Share"; }, 3000)
+          .then(function () {
+            ok("the Copied label reverts on its own", $(app, "share").textContent === "Share",
+               $(app, "share").textContent);
 
-        // The fallback, twice: a clipboard that is not there and one that says no.
-        var calls2 = fakeClipboard(app, "absent");
-        $(app, "share").click();
-        return new Promise(function (r) { setTimeout(r, 30); }).then(function () {
-          var ta = $(app, "sharetext");
-          ok("with no clipboard at all the line is on the page, selected, with somewhere to copy it from",
-             ta.getClientRects().length > 0 && ta.value === text &&
-             ta.selectionStart === 0 && ta.selectionEnd === ta.value.length &&
-             app.doc.activeElement === ta && msgOf(app).indexOf("copy this line") === 0,
-             "value " + JSON.stringify(ta.value) + " · msg " + msgOf(app));
-          ok("the fallback field is read-only, so the line cannot be edited into a claim the page did not make",
-             ta.readOnly === true && ta.tagName === "TEXTAREA", ta.tagName + " readOnly " + ta.readOnly);
+            // The fallback, twice: a clipboard that is not there, and one that
+            // says no. Each is entered from a closed box with a different
+            // message on the line — say()'s repeat branch blanks the live region
+            // for a frame when it is handed the string already on it, which is
+            // invisible to a player and was enough to make this row flake about
+            // one run in five when the two cases ran back to back.
+            var calls2 = fakeClipboard(app, "absent");
+            $(app, "share").click();
+            return waitFor(function () { return $(app, "sharetext").getClientRects().length > 0; })
+              .then(function () {
+                var ta = $(app, "sharetext");
+                ok("with no clipboard at all the line is on the page, selected, with somewhere to copy it from",
+                   ta.getClientRects().length > 0 && ta.value === text &&
+                   ta.selectionStart === 0 && ta.selectionEnd === ta.value.length &&
+                   app.doc.activeElement === ta && msgOf(app).indexOf("copy this line") === 0,
+                   "value " + JSON.stringify(ta.value) + " · msg " + msgOf(app));
+                ok("the fallback field is read-only, so the line cannot be edited into a claim the page did not make",
+                   ta.readOnly === true && ta.tagName === "TEXTAREA", ta.tagName + " readOnly " + ta.readOnly);
+                // The whole point of the fallback is that the player can read
+                // what they are being told to copy. rows="2" could not: the line
+                // wraps to three rendered rows at 390px and four at 320px.
+                ok("every line of it is visible — the field is sized to what it holds",
+                   ta.scrollHeight <= ta.clientHeight && ta.scrollTop === 0,
+                   "scrollHeight " + ta.scrollHeight + " in clientHeight " + ta.clientHeight);
 
-          var calls3 = fakeClipboard(app, "reject");
-          $(app, "share").click();
-          return new Promise(function (r) { setTimeout(r, 30); }).then(function () {
-            ok("a clipboard that rejects lands in the same fallback, not in an unhandled rejection",
-               calls3.length === 1 && $(app, "sharetext").getClientRects().length > 0 &&
-               msgOf(app).indexOf("copy this line") === 0 && app.errors.length === 0,
-               app.errors.join(" ") || "no errors, box open");
+                // Back to a closed box and a different message, so the reject
+                // case is entered from the same place the absent case was.
+                $(app, "undo").click();
+                play(app, path[path.length - 1]);
+                var calls3 = fakeClipboard(app, "reject");
+                $(app, "share").click();
+                return waitFor(function () { return $(app, "sharetext").getClientRects().length > 0; })
+                  .then(function () {
+                    ok("a clipboard that rejects lands in the same fallback, not in an unhandled rejection",
+                       calls3.length === 1 && $(app, "sharetext").getClientRects().length > 0 &&
+                       msgOf(app).indexOf("copy this line") === 0 && app.errors.length === 0,
+                       app.errors.join(" ") || "no errors, box open");
 
-            // Undo is the move back to play, and a result line for a ladder
-            // that no longer reaches the target is not a result.
-            $(app, "undo").click();
-            ok("stepping off the target puts the share card away and the caret back in the field",
-               $(app, "share").getClientRects().length === 0 &&
-               $(app, "sharebox").getClientRects().length === 0 &&
-               app.WL.state().shareOpen === false &&
-               app.doc.activeElement === $(app, "word"),
-               "share " + $(app, "share").className + ", box " + $(app, "sharebox").className +
-               ", focus " + (app.doc.activeElement && app.doc.activeElement.id));
-            ok("no error was thrown anywhere in the share paths", app.errors.length === 0,
-               app.errors.join(" ") || "clean");
-            app.close();
+                    // Undo is the move back to play, and a result line for a
+                    // ladder that no longer reaches the target is not a result.
+                    $(app, "undo").click();
+                    ok("stepping off the target puts the share card away and the caret back in the field",
+                       $(app, "share").getClientRects().length === 0 &&
+                       $(app, "sharebox").getClientRects().length === 0 &&
+                       app.WL.state().shareOpen === false &&
+                       app.doc.activeElement === $(app, "word"),
+                       "share " + $(app, "share").className + ", box " + $(app, "sharebox").className +
+                       ", focus " + (app.doc.activeElement && app.doc.activeElement.id));
+                    ok("no error was thrown anywhere in the share paths", app.errors.length === 0,
+                       app.errors.join(" ") || "clean");
+                    app.close();
+                  });
+              });
           });
-        });
       });
     }).then(function () {
       return openApp("?d=" + REPLAY, 390, 844);
@@ -1989,11 +2052,14 @@
       var text = app.WL.shareText(), blobBefore = stored();
       ok("the streak clause is omitted, not printed as zero",
          SHARE_RE_REPLAY.test(text) && text.indexOf("streak") === -1, JSON.stringify(text));
+      var counter = countWrites(app);
       fakeClipboard(app, "absent");
       $(app, "share").click();
-      return new Promise(function (r) { setTimeout(r, 30); }).then(function () {
+      return waitFor(function () { return $(app, "sharetext").getClientRects().length > 0; }).then(function () {
         ok("pressing Share on a replay writes nothing to storage",
-           stored() === blobBefore, "blob unchanged");
+           stored() === blobBefore && counter.writes === 0,
+           counter.writes + " setItem call(s)");
+        counter.stop();
         ok("the fallback still opens on a replay board", $(app, "sharetext").getClientRects().length > 0,
            $(app, "sharebox").className);
         app.close();
@@ -2028,23 +2094,127 @@
       var solvedH = de.scrollHeight;
       fakeClipboard(app, "absent");
       $(app, "share").click();
-      return new Promise(function (r) { setTimeout(r, 30); }).then(function () {
-        var ta = $(app, "sharetext").getBoundingClientRect();
-        // The open fallback stands in the input row's place and takes back the
-        // 64px .roomier lends the column, so the page is the same height with
-        // it open as it was without it — --chrome does not need re-measuring.
-        ok("the open fallback does not grow the page at " + label,
-           de.scrollHeight <= de.clientHeight + 1 && de.scrollHeight <= solvedH + 1,
-           de.scrollHeight + " <= " + de.clientHeight + " (was " + solvedH + " closed)");
+      return waitFor(function () { return $(app, "sharetext").getClientRects().length > 0; }).then(function () {
+        var el = $(app, "sharetext"), ta = el.getBoundingClientRect();
+        // The property that had to hold is not "the page never moves" — the
+        // field is sized to a line whose wrapped height is a function of the
+        // viewport, so at 320 and in landscape the document grows and the page
+        // scrolls, which is this build's stated law rather than a break in it.
+        // It is that the line the player has been told to copy is entirely
+        // rendered and entirely on screen.
+        ok("every line of the result is rendered inside the field at " + label,
+           el.scrollHeight <= el.clientHeight && el.scrollTop === 0,
+           "scrollHeight " + el.scrollHeight + " in clientHeight " + el.clientHeight +
+           ", scrollTop " + el.scrollTop);
+        ok("the fallback field is fully inside the viewport at " + label,
+           ta.top >= -0.5 && ta.bottom <= app.win.innerHeight + 0.5,
+           "top " + Math.round(ta.top) + " bottom " + Math.round(ta.bottom) + " of " +
+           app.win.innerHeight + "; document " + solvedH + " -> " + de.scrollHeight);
         ok("no horizontal scroll with the fallback open at " + label,
            de.scrollWidth <= de.clientWidth, de.scrollWidth + " <= " + de.clientWidth);
         ok("the fallback field is at least 44px tall at " + label, ta.height >= 44,
            Math.round(ta.height * 10) / 10 + "px");
-        ok("the fallback field is inside the viewport at " + label,
-           ta.top >= -0.5 && ta.bottom <= app.win.innerHeight + 0.5,
-           "top " + Math.round(ta.top) + " bottom " + Math.round(ta.bottom) + " of " + app.win.innerHeight);
         app.close();
       });
+    });
+  }
+
+  // A clipboard write outlives the board it was made about, and a permission
+  // prompt makes that gap seconds long. Every row here holds a promise open
+  // across a move, which is the only way to see the bug: without the guard,
+  // "result copied" appeared over a seven-move ladder for a five-move copy, and
+  // "copy this line" appeared on a board with no line and no box on it.
+  function deferredClipboard(app) {
+    var pend = [];
+    try {
+      Object.defineProperty(app.win.navigator, "clipboard", {
+        configurable: true,
+        get: function () {
+          return { writeText: function (t) {
+            return new Promise(function (res, rej) { pend.push({ text: t, res: res, rej: rej }); });
+          } };
+        }
+      });
+    } catch (e) { /* ignore */ }
+    return pend;
+  }
+
+  function shareInFlight() {
+    return openApp("?d=" + REPLAY, 390, 844).then(function (app) {
+      group("a clipboard call that outlives its board says nothing");
+      var path = solvePath(app);
+      var pend = deferredClipboard(app);
+
+      $(app, "share").click();
+      $(app, "undo").click();
+      pend[0].rej(new Error("denied"));
+      return waitFor(function () { return false; }, 120).then(function () {
+        ok("a rejection landing after Undo does not tell the player to copy a line that is not there",
+           msgOf(app) === "" && $(app, "sharebox").getClientRects().length === 0 &&
+           $(app, "share").getClientRects().length === 0,
+           "msg " + JSON.stringify(msgOf(app)) + ", box " + $(app, "sharebox").className);
+        ok("and the caret is in the field, not on <body>",
+           app.doc.activeElement === $(app, "word"),
+           String(app.doc.activeElement && app.doc.activeElement.id));
+
+        // Back at the target, two presses in flight at once.
+        play(app, path[path.length - 1]);
+        var before = msgOf(app);
+        $(app, "share").click();   // press 2
+        $(app, "share").click();   // press 3
+        pend[1].res();
+        return waitFor(function () { return false; }, 120).then(function () {
+          ok("a settle from a press that has been superseded is ignored",
+             msgOf(app) === before && $(app, "share").textContent === "Share",
+             "msg " + JSON.stringify(msgOf(app)) + ", label " + $(app, "share").textContent);
+          pend[2].rej(new Error("denied"));
+          return waitFor(function () { return $(app, "sharetext").getClientRects().length > 0; })
+            .then(function () {
+              ok("the latest press still lands, and lands in the fallback",
+                 msgOf(app).indexOf("copy this line") === 0 &&
+                 app.doc.activeElement === $(app, "sharetext"),
+                 msgOf(app) + " / focus " + (app.doc.activeElement && app.doc.activeElement.id));
+
+              // A copy settling over a box that holds the caret: render() takes
+              // the box away, and focus has to go somewhere that exists.
+              $(app, "share").click();          // press 4, over the open box
+              pend[3].res();
+              return waitFor(function () { return $(app, "sharebox").getClientRects().length === 0; })
+                .then(function () {
+                  ok("a copy that closes the open fallback moves the caret to Share, never to <body>",
+                     app.doc.activeElement === $(app, "share") &&
+                     app.doc.activeElement !== app.doc.body,
+                     String(app.doc.activeElement && (app.doc.activeElement.id || app.doc.activeElement.tagName)));
+                  ok("no error was thrown across any of it", app.errors.length === 0,
+                     app.errors.join(" ") || "clean");
+                  app.close();
+                });
+            });
+        });
+      });
+    });
+  }
+
+  // The restored #word:disabled rule. The branch that sets the property is
+  // unreachable on the shipped list, so the property is set here directly:
+  // the question this row asks is whether the styling exists, not whether the
+  // guard can run.
+  function disabledField() {
+    return openApp("?d=" + REPLAY, 390, 844).then(function (app) {
+      group("a disabled field reads as spent, not as live");
+      var w = $(app, "word"), cs = app.win.getComputedStyle;
+      var liveColour = cs(w).color, liveStyle = cs(w).borderBottomStyle;
+      w.disabled = true;
+      var deadColour = cs(w).color, deadStyle = cs(w).borderBottomStyle;
+      var muted = cs(app.doc.documentElement).getPropertyValue("--muted").trim();
+      ok("a disabled #word is drawn differently from a live one",
+         deadColour !== liveColour && deadStyle !== liveStyle,
+         liveColour + "/" + liveStyle + " -> " + deadColour + "/" + deadStyle);
+      ok("and it is drawn in the muted ink the rest of the page uses for spent controls",
+         deadColour === cs($(app, "submit")).color || muted.length > 0,
+         "muted " + muted + ", field " + deadColour);
+      w.disabled = false;
+      app.close();
     });
   }
 
@@ -2115,6 +2285,8 @@
       .then(function () { return shareCard(); })
       .then(function () { return shareLayout(320, 568); })
       .then(function () { return shareLayout(390, 844); })
+      .then(function () { return shareInFlight(); })
+      .then(function () { return disabledField(); })
       .then(function () { return rungLabels(); });
   }).then(finish, function (err) {
     group("harness");
