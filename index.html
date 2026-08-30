@@ -249,6 +249,19 @@
   /* A refused word is still in the field; struck through, it cannot be
      misread as a rung that was accepted. */
   #word.bad { color: var(--accent); text-decoration: line-through; text-decoration-thickness: 2px; }
+  /* The only branch that still disables the field is the no-puzzle guard, which
+     is unreachable on the shipped word list (PROJECT.md, open threads). Its
+     styling was deleted as dead in a cycle that read the guard as dead too, so
+     that branch would have drawn a field that looks live and takes nothing.
+     Dotted rather than dashed, and the text greyed: a spent field, not a
+     refused one. -webkit-text-fill-color because iOS overrides `color` on a
+     disabled control and would otherwise leave it at full ink. */
+  #word:disabled {
+    border-bottom-style: dotted;
+    color: var(--muted);
+    -webkit-text-fill-color: var(--muted);
+    opacity: 1;
+  }
   #inputrow.hidden { display: none; }
 
   /* 16px, not a scaled gap: measured, a tap on this hairline any closer than
