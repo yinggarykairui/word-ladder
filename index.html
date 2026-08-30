@@ -794,13 +794,28 @@
 
   /* ---------------------------- render -------------------------------- */
 
+  // Which letter changed was visual only: bold plus accent measures 6.40:1 on
+  // paper, and the rung's label was the bare word, so the emphasis reached
+  // nobody who was not looking at it (WCAG 1.4.1 — colour and weight are not
+  // the only means of conveying information). The label now carries the same
+  // fact in words. The position, not the letter: the letter is already in the
+  // word being announced, and "SIDE, 1st letter changed" reads once; "SIDE, S
+  // changed" invites the reader to hunt for which S.
+  var ORDINAL = ["1st", "2nd", "3rd", "4th"];
+  function rungLabel(word, prev) {
+    // The start word and an unplayed target have no rung above them to have
+    // changed from, so they stay bare.
+    var hot = prev ? firstDiff(word, prev) : -1;
+    return hot < 0 ? word : word + ", " + ORDINAL[hot] + " letter changed";
+  }
+
   function rungEl(word, prev, cls) {
     var d = document.createElement("div");
     d.className = "rung" + (cls ? " " + cls : "");
     // role=img + aria-label: letter-spaced text with one letter in its own span
     // gets spelled out otherwise, so the word is announced once, as a word.
     d.setAttribute("role", "img");
-    d.setAttribute("aria-label", word);
+    d.setAttribute("aria-label", rungLabel(word, prev));
     var hot = prev ? firstDiff(word, prev) : -1;
     for (var i = 0; i < word.length; i++) {
       var s = document.createElement("span");
@@ -832,7 +847,7 @@
     while (t.firstChild) el.target.appendChild(t.firstChild);
     el.target.className = "rung" + (atTarget ? " solved" : "");
     el.target.setAttribute("role", "img");
-    el.target.setAttribute("aria-label", TARGET);
+    el.target.setAttribute("aria-label", rungLabel(TARGET, tprev));
 
     // The puzzle never takes its own controls away while there is a move in
     // them: a solved player can undo and explore, and the win stands regardless.
