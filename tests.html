@@ -1984,7 +1984,14 @@
         // a button that is live again.
         ok("the button says it copied, and stops saying it",
            $(app, "share").textContent === "Copied", $(app, "share").textContent);
-        return waitFor(function () { return $(app, "share").textContent === "Share"; }, 3000)
+        // A lower bound as well as an upper one: a label that reverts in the
+        // next frame is not an acknowledgement anyone can read, and a row that
+        // only waits for the revert cannot tell 1600ms from 60ms.
+        return waitFor(function () { return false; }, 400).then(function () {
+          ok("and it is still saying it 400ms later, not gone in a frame",
+             $(app, "share").textContent === "Copied", $(app, "share").textContent);
+          return waitFor(function () { return $(app, "share").textContent === "Share"; }, 3000);
+        })
           .then(function () {
             ok("the Copied label reverts on its own", $(app, "share").textContent === "Share",
                $(app, "share").textContent);
@@ -2013,6 +2020,21 @@
                 ok("every line of it is visible — the field is sized to what it holds",
                    ta.scrollHeight <= ta.clientHeight && ta.scrollTop === 0,
                    "scrollHeight " + ta.scrollHeight + " in clientHeight " + ta.clientHeight);
+                // A rotation changes the width the line wraps at without
+                // touching the line. Sized once at 390 and read at 320, the
+                // field hid 19px of it; at 280, 38px. The frame is resized
+                // under the open box, which is the same event a phone turned
+                // over fires.
+                var wasW = app.frame.style.width, wasH = app.frame.style.height;
+                app.frame.style.width = "320px"; app.frame.style.height = "568px";
+                return waitFor(function () { return ta.scrollHeight <= ta.clientHeight; }, 500)
+                  .then(function () {
+                    ok("and it is re-sized when the width it wraps at changes",
+                       ta.scrollHeight <= ta.clientHeight,
+                       "at 320px: scrollHeight " + ta.scrollHeight + " in clientHeight " + ta.clientHeight);
+                    app.frame.style.width = wasW; app.frame.style.height = wasH;
+                    return waitFor(function () { return false; }, 60);
+                  }).then(function () {
 
                 // Back to a closed box and a different message, so the reject
                 // case is entered from the same place the absent case was.
@@ -2041,6 +2063,7 @@
                        app.errors.join(" ") || "clean");
                     app.close();
                   });
+              });
               });
           });
       });
@@ -2195,6 +2218,139 @@
     });
   }
 
+  // A route to the target one move longer than the shortest one, so a board can
+  // leave the target and come back to it saying something different. Needs a
+  // word adjacent to both the last rung and the target; not every date has one,
+  // so the date is searched for rather than assumed, and the row says which it
+  // used.
+  function detourDate(WL) {
+    var d, i, p, path, L, T, k, w;
+    for (i = 0; i < 60; i++) {
+      d = WL.shiftDays(WL.today, -(i + 1));
+      p = WL.puzzleFor(d);
+      path = WL.pathOf(p);
+      if (!path || path.length < 3) continue;
+      L = path[path.length - 2];
+      T = p.target;
+      for (k = 0; k < WL.NBR[L].length; k++) {
+        w = WL.NBR[L][k];
+        if (w !== T && path.indexOf(w) === -1 && WL.NBR[w].indexOf(T) !== -1) {
+          return { date: d, path: path.map(function (x) { return x.toUpperCase(); }),
+                   detour: w.toUpperCase() };
+        }
+      }
+    }
+    return null;
+  }
+
+  // settle()'s three guards each close a different way for a clipboard answer to
+  // arrive about a board that is no longer there. Two of them covered for each
+  // other under the rows above — deleting either left the suite green while
+  // re-introducing, word for word, the behaviour the day's first review
+  // rejected. These are the two cases that tell them apart.
+  function shareGuards() {
+    var found;
+    return openApp("", 390, 844).then(function (a) {
+      found = detourDate(a.WL);
+      a.close();
+      ok("a date with a one-move detour back to the target exists to test against",
+         !!found, found ? found.date + ": " + found.path.join(">") + " detour via " + found.detour
+                        : "none in 60 dates");
+      if (!found) return null;
+      return openApp("?d=" + found.date, 390, 844);
+    }).then(function (app) {
+      if (!app) return;
+      var WL = app.WL, path = found.path, i;
+      for (i = 1; i < path.length; i++) play(app, path[i]);
+
+      // A copy that did happen, then a board that moves away from it inside the
+      // 1.6s the label is up for. The label is a claim about a board; nothing
+      // was copied about the board it would come back to.
+      fakeClipboard(app, "ok");
+      $(app, "share").click();
+      return waitFor(function () { return $(app, "share").textContent === "Copied"; })
+        .then(function () {
+          $(app, "undo").click();
+          play(app, path[path.length - 1]);
+          ok("a Copied label does not survive the board it was earned on",
+             $(app, "share").textContent === "Share" &&
+             $(app, "share").getClientRects().length > 0,
+             "label " + $(app, "share").textContent + " after undo and re-solve");
+          return app;
+        }).then(function (app) {
+      var pend = deferredClipboard(app);
+
+      // (A) The board leaves the target while the LINE stays identical: same
+      // move count, same streak, so only the at-target guard can catch it.
+      $(app, "share").click();
+      var sent = pend[0].text;
+      $(app, "undo").click();
+      play(app, found.detour);
+      var sameText = sent === WL.shareText();
+      var offTarget = app.WL.state().chain.slice(-1)[0] !== WL.puzzle.target.toUpperCase();
+      var msgBefore = msgOf(app);
+      pend[0].res();
+      return waitFor(function () { return false; }, 150).then(function () {
+        ok("a copy that comes back to a board of the same length that is no longer at the target says nothing",
+           sameText && offTarget && msgOf(app) === msgBefore &&
+           $(app, "share").getClientRects().length === 0,
+           "line unchanged " + sameText + ", off target " + offTarget +
+           ", msg " + JSON.stringify(msgOf(app)));
+        ok("and the button does not come back wearing a label it did not earn",
+           $(app, "share").textContent === "Share", $(app, "share").textContent);
+
+        // (B) The board returns to the target one move longer, so the at-target
+        // guard passes and only the line itself can catch it.
+        $(app, "undo").click();
+        play(app, path[path.length - 1]);   // back at the target, one move up
+        $(app, "share").click();            // press 2, deferred
+        var sent2 = pend[1].text;
+        $(app, "undo").click();
+        play(app, found.detour);
+        play(app, path[path.length - 1]);   // at the target again, longer still
+        var atTarget = app.WL.state().chain.slice(-1)[0] === WL.puzzle.target.toUpperCase();
+        var differs = sent2 !== WL.shareText();
+        var msgBefore2 = msgOf(app);
+        pend[1].res();
+        return waitFor(function () { return false; }, 150).then(function () {
+          ok("a copy of a five-move result does not announce itself over a six-move board",
+             atTarget && differs && msgOf(app) === msgBefore2 &&
+             $(app, "share").textContent === "Share",
+             "at target " + atTarget + ", line moved on " + differs +
+             ", msg " + JSON.stringify(msgOf(app)) + ", label " + $(app, "share").textContent);
+          ok("no error was thrown by either stale settle", app.errors.length === 0,
+             app.errors.join(" ") || "clean");
+          app.close();
+        });
+      });
+      });
+    });
+  }
+
+  // The label swap has to fit the button it is swapped into, at the width the
+  // must-pass line is judged at. The design argument is that SUBMIT already
+  // proves six letters fit; this row is that argument checked rather than
+  // inherited.
+  function copiedLabelFits() {
+    seed(null);
+    return openApp("", 320, 568).then(function (app) {
+      group("the Copied label fits the button it lands in, at 320px");
+      solvePath(app);
+      var b = $(app, "share"), before = b.getBoundingClientRect().width;
+      fakeClipboard(app, "ok");
+      b.click();
+      return waitFor(function () { return b.textContent === "Copied"; }).then(function () {
+        ok("Copied does not overflow its own border at 320px",
+           b.scrollWidth <= b.clientWidth,
+           "scrollWidth " + b.scrollWidth + " in clientWidth " + b.clientWidth);
+        ok("and swapping the label does not reflow the row",
+           Math.abs(b.getBoundingClientRect().width - before) < 0.5,
+           before + " -> " + b.getBoundingClientRect().width);
+        app.close();
+      });
+    });
+  }
+
   // The restored #word:disabled rule. The branch that sets the property is
   // unreachable on the shipped list, so the property is set here directly:
   // the question this row asks is whether the styling exists, not whether the
@@ -2286,6 +2442,8 @@
       .then(function () { return shareLayout(320, 568); })
       .then(function () { return shareLayout(390, 844); })
       .then(function () { return shareInFlight(); })
+      .then(function () { group("settle()'s guards, told apart"); return shareGuards(); })
+      .then(function () { return copiedLabelFits(); })
       .then(function () { return disabledField(); })
       .then(function () { return rungLabels(); });
   }).then(finish, function (err) {

@@ -270,17 +270,22 @@
      .roomier while it is open), which is most of what it needs; the field is
      then sized to the line at the width it wraps at, so what it needs is not a
      constant and --chrome cannot be asked to hold it.
-     Measured with the box open, portrait first: 360x640, 390x844 and 1280x800
-     take it inside the 64px and the document does not grow by one pixel. At
-     320x568 the page grows 25px, and at 667x375 and 844x390 — the column
-     already sitting on its 4.8rem floor — 86px. That is this page's stated law
+     Measured with the box open, portrait first: 390x844 and 1280x800 take it
+     inside the 64px and the document does not grow by one pixel, 360x640 by
+     3px. At 320x568 the page grows 37px, and at 667x375 and 844x390 — the
+     column already sitting on its 4.8rem floor — 97px. That is this page's stated law
      working, not failing it: one screenful where there is room for one, an
      ordinary scrolling page where there is not (PROJECT.md, open threads). The
      line the player has been told to copy is fully rendered and fully inside
      the viewport at all six, which is the property that had to hold; a
      shorter box that hid a third of the line while keeping the page still
      would have been the wrong trade. */
-  #sharebox { padding: 16px 0 0; }
+  /* 8px under the field, not 0: the document grows to exactly the height of
+     what is in it, and a focus ring is drawn 2px outside its element — at
+     320x568 and in landscape the ring's bottom edge landed 4px past the last
+     scrollable pixel, so the field could hold the caret and not be able to show
+     it. The page's own bottom padding was being eaten the same way. */
+  #sharebox { padding: 16px 0 8px; }
   #sharetext {
     display: block;
     width: 84%;
@@ -292,7 +297,10 @@
     background: var(--paper);
     color: var(--ink);
     font-family: var(--ui-font);
-    font-size: 0.78rem;
+    /* 0.82rem, the status line's size. At 0.78 this was the smallest text on
+       the page, and it is the one line the page asks the player to read
+       carefully enough to copy. */
+    font-size: 0.82rem;
     line-height: 1.5;
     text-align: center;
     resize: none;
@@ -924,7 +932,7 @@
     // --chrome is still holding for it.
     // Stepping off the target puts the board back to play, and a share line for
     // a ladder that no longer reaches the target is not a result any more.
-    if (!atTarget) shareOpen = false;
+    if (!atTarget) { shareOpen = false; clearCopied(); }
     el.share.className = atTarget ? "" : "hidden";
     el.sharebox.className = shareOpen ? "" : "hidden";
     // The 64px .roomier lends the column is the input row's; the open share box
@@ -1198,6 +1206,16 @@
 
   // Nothing on the page changes when a clipboard write succeeds, so the message
   // line is the only evidence the player gets that anything happened.
+  // "Copied" is a claim about the board it was pressed on, so it leaves when
+  // that board does. Undo, re-solve inside the 1.6s window, and the button came
+  // back still reading Copied over a result that had never been on the
+  // clipboard — settle() guards the message line against exactly that and the
+  // label was set outside the guard, cleared only by its own timer.
+  function clearCopied() {
+    if (copiedTimer) { clearTimeout(copiedTimer); copiedTimer = 0; }
+    if (el.share.textContent !== "Share") el.share.textContent = "Share";
+  }
+
   function shareCopied() {
     var hadFocus = shareOpen && document.activeElement === el.sharetext;
     shareOpen = false;
@@ -1213,12 +1231,9 @@
     // has used all game, so on a phone — thumb over the button — the press read
     // as dead and got made twice. Six letters, the width SUBMIT already proves
     // fits at 320px, so the row does not reflow to say it.
-    el.share.textContent = "Copied";
     if (copiedTimer) clearTimeout(copiedTimer);
-    copiedTimer = setTimeout(function () {
-      copiedTimer = 0;
-      el.share.textContent = "Share";
-    }, 1600);
+    el.share.textContent = "Copied";
+    copiedTimer = setTimeout(clearCopied, 1600);
   }
 
   // navigator.clipboard is undefined on file:// — not a secure context, and

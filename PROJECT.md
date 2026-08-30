@@ -4,7 +4,7 @@ Kept per MANUAL.md §4 (every `size:m`+ build). The planner writes and revises
 it; the shipper checks off the done-map at ship; any revisit reads it first and
 updates it last.
 
-- Hub issue: [factory-hub#9](https://github.com/yinggarykairui/factory-hub/issues/9) — `queued` → `speccing` → `building`
+- Hub issue: [factory-hub#9](https://github.com/yinggarykairui/factory-hub/issues/9) — `queued` → `speccing` → `building` → `shipped` (day 017)
 - Size: `size:m` · Type: `type:game` · Day 017 (2026-08-10) · manual_version 1.6.1
 - Idea source: seeded (warm-start pack, §16-P0)
 - Increment 2: [factory-hub#50](https://github.com/yinggarykairui/factory-hub/issues/50) · Day 036 (2026-08-30) · manual_version 1.8.0 — the share card and two of the day-017 residuals
@@ -198,7 +198,7 @@ that were decisions rather than instrumentation. Scope and fence:
   solved, banked once, survives any Undo, persisted as `solved` in the blob) and
   `atTarget` (the chain in front of you ends at the target right now, which is
   what the ladder draws). Undo stays live after a solve, the status
-  line reads `solved in N moves · best possible N` while the chain ends at the
+  line reads `solved in N moves · best possible P` while the chain ends at the
   target and `solved today · best possible N` after an Undo — `solved · best
   possible N` under
   `?d=`, where "today" would be a claim about a date that is not today (C2) —
@@ -263,9 +263,11 @@ that were decisions rather than instrumentation. Scope and fence:
   the README promises this number is named the same way everywhere.
 - **Opening the fallback grows the page on a short screen, and that is the
   law working.** Measured with the box open: 360x640, 390x844 and 1280x800 take
-  it inside the 64px `.roomier` gives back and the document does not move at
-  all; 320x568 grows 25px; 667x375 and 844x390 grow 86px, the column already
-  sitting on its 4.8rem floor. One screenful where there is room for one, an
+  it inside the 64px `.roomier` gives back and the document moves 0px, 0px and
+  3px; 320x568 grows 37px; 667x375 and 844x390 grow 97px, the column already
+  sitting on its 4.8rem floor. (Re-measured in cycle 2, after the field went to
+  the status line's 0.82rem and gained 8px of clearance under it so its focus
+  ring is not drawn past the last scrollable pixel.) One screenful where there is room for one, an
   ordinary scrolling page where there is not. The property that has to hold is
   that the line is fully rendered and fully inside the viewport, which
   `tests.html` asserts at both phone widths; a still page showing two thirds of
