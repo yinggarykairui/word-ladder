@@ -135,11 +135,11 @@ that were decisions rather than instrumentation. Scope and fence:
 | 2.1 | `shareText()`: date · `solved in N moves · best possible P` · streak, then the demo URL. The status line's exact words, because the README promises the number is named the same way everywhere it appears. No word, no rung, no letter. | done |
 | 2.2 | Share control, live only while the chain ends at the target — the rule the status line and the target label already follow. Says `Copied` for 1.6s, because a copy changes nothing else on the page. | done |
 | 2.3 | The streak clause is omitted under `?d=`, not printed as 0 | done |
-| 2.4 | Clipboard fallback: a read-only field sized to the wrapped line at the width it is read at, pre-selected, re-sized on rotation. Not a graceful extra — `file://` is not a secure context and has no `navigator.clipboard` at all | done |
+| 2.4 | Clipboard fallback: a read-only field sized to the wrapped line at the width it is read at, pre-selected, re-sized on rotation. Not a graceful extra — on `file://`, the documented way to run this page, `navigator.clipboard` is present in Chromium and the write comes back `NotAllowedError`; both the absent and the refused path end here | done |
 | 2.5 | `settle()`: a write that comes back to a board that has moved announces nothing (fix cycle 1) | done |
 | 2.6 | Rung `aria-label`s name the changed position; START and an unplayed TARGET stay bare (residual 13) | done |
 | 2.7 | `#word:disabled` styling restored for the unreachable no-puzzle guard (residual 10) | done |
-| 2.8 | Suite 218 → 264: three clipboard paths, the in-flight guard, both phone viewports, the labels; re-mutated after the fix cycle, 6 of 7 mutants killed | done |
+| 2.8 | Suite 218 → 274: three clipboard paths, `settle()`'s three guards told apart, both phone viewports, the labels, the fallback's fit and re-fit. Mutation-tested after each of the two fix cycles; the ship-gate pass killed 17 of 20 | done |
 | 2.9 | README true of the shipped build; `screenshot.png` re-shot on a solved, shared board; provenance footer in the revisit form | done |
 
 ## 4. Open threads
@@ -263,9 +263,9 @@ that were decisions rather than instrumentation. Scope and fence:
   the README promises this number is named the same way everywhere.
 - **Opening the fallback grows the page on a short screen, and that is the
   law working.** Measured with the box open: 360x640, 390x844 and 1280x800 take
-  it inside the 64px `.roomier` gives back and the document moves 0px, 0px and
-  3px; 320x568 grows 37px; 667x375 and 844x390 grow 97px, the column already
-  sitting on its 4.8rem floor. (Re-measured in cycle 2, after the field went to
+  it inside the 64px `.roomier` gives back and the document does not grow by a
+  pixel; 360x640 grows 3px; 320x568 grows 37px; 667x375 and 844x390 grow 97px,
+  the column already sitting on its 4.8rem floor. (Re-measured in cycle 2, after the field went to
   the status line's 0.82rem and gained 8px of clearance under it so its focus
   ring is not drawn past the last scrollable pixel.) One screenful where there is room for one, an
   ordinary scrolling page where there is not. The property that has to hold is
@@ -285,7 +285,11 @@ that were decisions rather than instrumentation. Scope and fence:
   it survives the suite, because sizing the field to its content leaves nothing
   to scroll. Kept as a second line under `fitShare()` rather than deleted;
   recorded here so it is not mistaken for covered code (cf. the widen/fallback
-  branches above).
+  branches above). It is the **only** line of the day-036 code with no mutant
+  that kills it: the ship-gate pass found two more — the 8px clearance under the
+  share box and the field's `0.82rem` — and both are now guarded rather than
+  registered here, which is the right way round. A register is where a line goes
+  when it cannot be covered, not where it goes to avoid being.
 - **The word list is load-bearing on order and contents.** Puzzles are a
   function of the date *and* of the exact list. Any later edit reshuffles every
   past and future puzzle. v0 freezes the list at ship. If the list is ever

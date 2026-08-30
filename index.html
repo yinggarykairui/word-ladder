@@ -409,11 +409,13 @@
       <button id="share" type="button" class="hidden">Share</button>
     </div>
 
-    <!-- The fallback, not a stretch goal: navigator.clipboard is undefined on
-         file://, which is a way this page is meant to be run (README: "open
-         index.html in any browser"), and writeText can reject under a
-         permissions policy even on https. A Share that silently does nothing
-         there is worse than no Share at all. -->
+    <!-- The fallback, not a stretch goal. Opening index.html directly is a way
+         this page is meant to be run (README: "open index.html in any
+         browser"), and on file:// the write does not happen: measured in
+         Chromium, navigator.clipboard is present and writeText rejects
+         NotAllowedError. On https a permissions policy or an unfocused document
+         does the same. A Share that silently does nothing there is worse than
+         no Share at all. -->
     <div id="sharebox" class="hidden">
       <textarea id="sharetext" rows="2" readonly spellcheck="false"
                 aria-label="your result, ready to copy"></textarea>
@@ -1236,11 +1238,16 @@
     copiedTimer = setTimeout(clearCopied, 1600);
   }
 
-  // navigator.clipboard is undefined on file:// — not a secure context, and
-  // opening index.html directly is a documented way to run this — and
-  // writeText() can reject behind a permissions policy even on https. Either
-  // way the player still gets the line, selected, with somewhere to copy it
-  // from. This is the path that has to work, not the graceful extra.
+  // The two ways a clipboard write does not happen, and both are ordinary.
+  // Absent: no navigator.clipboard at all, which is what a non-secure context
+  // gives. Refused: the object is there and writeText() rejects — a permissions
+  // policy, a document that is not focused, a gesture that has timed out. That
+  // second one is the common case for the documented way to run this page:
+  // measured on file:// in Chromium, navigator.clipboard IS an object (a file
+  // URL is potentially trustworthy there) and the write comes back
+  // NotAllowedError. Either way the player still gets the line, selected, with
+  // somewhere to copy it from. This is the path that has to work, not the
+  // graceful extra.
   // The height the line actually takes at the width it is actually being read
   // at. scrollHeight is a border-box measurement here, so the borders are added
   // back or the field lands 2px short of its own content — which is enough to
@@ -1255,6 +1262,12 @@
   function shareFallback() {
     shareOpen = true;
     render();
+    // The board has not left the target, so render() has no reason to take the
+    // label down — and a button reading Copied beside a line saying the
+    // clipboard is unavailable is the page contradicting itself. Reachable on a
+    // second press: writeText rejects NotAllowedError when the document is not
+    // focused, under a permissions policy, or past a gesture timeout.
+    clearCopied();
     say("copy this line — the clipboard isn't available here");
     // rows="2" was sized against the string, not against the box the string
     // wraps inside: at 390px the line takes three rendered rows and at 320px it

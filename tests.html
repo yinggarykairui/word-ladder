@@ -2137,6 +2137,19 @@
            de.scrollWidth <= de.clientWidth, de.scrollWidth + " <= " + de.clientWidth);
         ok("the fallback field is at least 44px tall at " + label, ta.height >= 44,
            Math.round(ta.height * 10) / 10 + "px");
+        // A focus ring is drawn 2px outside its element at a 2px offset, and the
+        // document grows to exactly the height of what is in it: with no
+        // clearance under the box the ring's bottom edge sat past the last
+        // scrollable pixel, so the field could hold the caret and not show it.
+        ok("there is room under the field for the ring that says it has the caret at " + label,
+           de.scrollHeight - (ta.bottom + app.win.scrollY) >= 4,
+           "slack " + Math.round((de.scrollHeight - (ta.bottom + app.win.scrollY)) * 10) / 10 + "px");
+        // The one line the page asks the player to read carefully enough to copy
+        // is not the smallest text on the page.
+        ok("the line the player is told to copy is set at the status line's size at " + label,
+           app.win.getComputedStyle(el).fontSize === app.win.getComputedStyle($(app, "status")).fontSize,
+           app.win.getComputedStyle(el).fontSize + " vs status " +
+           app.win.getComputedStyle($(app, "status")).fontSize);
         app.close();
       });
     });
@@ -2346,7 +2359,19 @@
         ok("and swapping the label does not reflow the row",
            Math.abs(b.getBoundingClientRect().width - before) < 0.5,
            before + " -> " + b.getBoundingClientRect().width);
-        app.close();
+        // Straight into a refused write while Copied is still up. The board has
+        // not left the target, so render() has no reason to take the label
+        // down on its own — and a button reading Copied beside a line saying
+        // the clipboard is unavailable is the page contradicting itself.
+        fakeClipboard(app, "reject");
+        b.click();
+        return waitFor(function () { return $(app, "sharetext").getClientRects().length > 0; })
+          .then(function () {
+            ok("a refused copy takes down the label a successful one put up",
+               b.textContent === "Share" && msgOf(app).indexOf("copy this line") === 0,
+               b.textContent + " beside " + JSON.stringify(msgOf(app)));
+            app.close();
+          });
       });
     });
   }
