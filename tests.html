@@ -102,6 +102,12 @@
   // REPLAY is stepped off today the moment the engine can say what today is.
   var REPLAY = "2026-08-10";
 
+  // The one string the fallback puts on screen, asserted whole rather than by
+  // its first three words: it used to name the wrong mechanism ("the clipboard
+  // isn't available here") and a prefix check could not tell that it had been
+  // corrected, or that it had been corrected back.
+  var FALLBACK_MSG = "copy this line — the browser refused the copy";
+
   // Collects everything the page throws or logs as an error. Installed on the
   // window, so it must be re-installed after any document.open() — that call
   // wipes the window's listeners.
@@ -2188,7 +2194,7 @@
                 ok("with no clipboard at all the line is on the page, selected, with somewhere to copy it from",
                    ta.getClientRects().length > 0 && ta.value === text &&
                    ta.selectionStart === 0 && ta.selectionEnd === ta.value.length &&
-                   app.doc.activeElement === ta && msgOf(app).indexOf("copy this line") === 0,
+                   app.doc.activeElement === ta && msgOf(app) === FALLBACK_MSG,
                    "value " + JSON.stringify(ta.value) + " · msg " + msgOf(app));
                 ok("the fallback field is read-only, so the line cannot be edited into a claim the page did not make",
                    ta.readOnly === true && ta.tagName === "TEXTAREA", ta.tagName + " readOnly " + ta.readOnly);
@@ -2224,7 +2230,7 @@
                   .then(function () {
                     ok("a clipboard that rejects lands in the same fallback, not in an unhandled rejection",
                        calls3.length === 1 && $(app, "sharetext").getClientRects().length > 0 &&
-                       msgOf(app).indexOf("copy this line") === 0 && app.errors.length === 0,
+                       msgOf(app) === FALLBACK_MSG && app.errors.length === 0,
                        app.errors.join(" ") || "no errors, box open");
 
                     // Undo is the move back to play, and a result line for a
@@ -2327,10 +2333,13 @@
         // The open fallback box is standing in that same space, so it cannot be
         // lent twice, and `atTarget && !shareOpen` is the term that says so.
         // The class is not what is asserted here; what the class costs is.
-        // Measured at 320x568 with the fallback open: the document goes
-        // 568 -> 605 (+37) as shipped, and 568 -> 669 (+101) with the
-        // !shareOpen term dropped, because the column keeps a loan it is no
-        // longer using and the box is added under it.
+        // Measured at 320x568 with the fallback open, when the defect was
+        // found: the document went 568 -> 605 (+37) as shipped, and
+        // 568 -> 669 (+101) with the !shareOpen term dropped, because the
+        // column keeps a loan it is no longer using and the box is added under
+        // it. Both numbers are 20px lower now — the fallback's message stopped
+        // wrapping to a second line at 320px when its wording was corrected —
+        // so the row asserts the bound rather than the reading.
         var grew = de.scrollHeight - solvedH;
         ok("opening the fallback costs the page the box and not the box plus the column's 64px loan at " + label,
            grew <= 64, "document " + solvedH + " -> " + de.scrollHeight + " (+" + grew + ")");
@@ -2410,7 +2419,7 @@
           return waitFor(function () { return $(app, "sharetext").getClientRects().length > 0; })
             .then(function () {
               ok("the latest press still lands, and lands in the fallback",
-                 msgOf(app).indexOf("copy this line") === 0 &&
+                 msgOf(app) === FALLBACK_MSG &&
                  app.doc.activeElement === $(app, "sharetext"),
                  msgOf(app) + " / focus " + (app.doc.activeElement && app.doc.activeElement.id));
 
@@ -2571,7 +2580,7 @@
         return waitFor(function () { return $(app, "sharetext").getClientRects().length > 0; })
           .then(function () {
             ok("a refused copy takes down the label a successful one put up",
-               b.textContent === "Share" && msgOf(app).indexOf("copy this line") === 0,
+               b.textContent === "Share" && msgOf(app) === FALLBACK_MSG,
                b.textContent + " beside " + JSON.stringify(msgOf(app)));
             app.close();
           });

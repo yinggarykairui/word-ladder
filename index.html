@@ -692,7 +692,10 @@
     // — 3,288 of them — comes back "distance 3-5", so the widen phase below,
     // the sorted-scan fallback and the `if (!PUZ)` guard have never executed
     // outside a test built on a different list. They stay because the list is
-    // editable and a sparser one would need them; they are not covered.
+    // editable and a sparser one would need them. The widen phase and the
+    // sorted-scan fallback are still uncovered; the `if (!PUZ)` guard is not,
+    // since day 037 — tests.html reaches it by writing a copy of this file
+    // with the list cut to two words that are not neighbours.
     var p = phase(3, 5, "distance 3-5") || phase(2, 6, "widened to 2-6");
     if (p) return p;
 
@@ -1334,7 +1337,16 @@
     // second press: writeText rejects NotAllowedError when the document is not
     // focused, under a permissions policy, or past a gesture timeout.
     clearCopied();
-    say("copy this line — the clipboard isn't available here");
+    // "the clipboard isn't available here" named the wrong mechanism, and it
+    // named the one this build had already corrected everywhere else: on
+    // file://, the documented way to run this page, navigator.clipboard IS an
+    // object and writeText comes back NotAllowedError. The line the player
+    // reads now says what happened — the copy was refused — which is also true
+    // of the absent case from where the player is standing. Six characters
+    // shorter than the string the layout was holding, which is enough to stop
+    // it wrapping to a second line at 320px: the document with the fallback
+    // open goes 568 -> 585 there instead of 568 -> 605.
+    say("copy this line — the browser refused the copy");
     // rows="2" was sized against the string, not against the box the string
     // wraps inside: at 390px the line takes three rendered rows and at 320px it
     // takes four, so a fixed two-row field hid 19px and 38px of it — and
