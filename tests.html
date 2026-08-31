@@ -135,7 +135,7 @@
   // it in the frame's load handler is already too late to see a load-time
   // throw. The cost is that location.search is empty, so ?d= rows use the
   // ordinary path.
-  function openWritten(w, h) {
+  function openWritten(w, h, src) {
     return new Promise(function (resolve, reject) {
       var f = makeFrame(w, h);
       f.addEventListener("load", function onload() {
@@ -144,7 +144,7 @@
         try {
           win.document.open();
           errors = watch(win);
-          win.document.write(SRC);
+          win.document.write(src || SRC);
           win.document.close();
         } catch (e) { reject(new Error("sandboxed")); return; }
         resolve(appOf(f, win, errors));
@@ -2738,6 +2738,76 @@
     });
   }
 
+  /* The no-puzzle guard, driven (D5).
+
+     `if (!PUZ)` cannot be reached on the shipped list — every date from 2020 to
+     2028 comes back "distance 3-5" — so it is the one branch on this page that
+     ships untested by construction. It is reached here by writing a copy of the
+     source with the word list cut to two words that are not neighbours: the
+     largest component is one word, no start has two neighbours, both phases and
+     the sorted-scan fallback come back null, and puzzleFor() returns null.
+
+     Measured on that copy before the fix: the field was correctly dotted and
+     greyed, and beside it Submit and Undo were both live and drawn at full ink
+     — and because everything that wires the page up sits below the guard's
+     `return`, including the form's own submit handler, one press on Submit fell
+     through to the browser's default and performed a native form GET, reloading
+     the page (…?), which threw away the line explaining why there was no board. */
+  function noPuzzle() {
+    group("the branch with no puzzle in it ships no live controls");
+    var crippled = SRC.replace(/var WORDS = \([\s\S]*?\)\.split\(" "\);/,
+                               'var WORDS = "aaaa zzzz".split(" ");');
+    ok("(control) the source really was cut down, so the rows below are about the guard",
+       crippled !== SRC && crippled.indexOf('var WORDS = "aaaa zzzz"') !== -1,
+       crippled === SRC ? "the word list did not match" : "list replaced");
+    return openWritten(390, 844, crippled).then(function (app) {
+      var cs = app.win.getComputedStyle;
+      ok("the guard is the branch that ran — no puzzle, no engine, and the page says so",
+         $(app, "status").textContent === "no puzzle for this date" && !app.win.WL &&
+         app.errors.length === 0,
+         $(app, "status").textContent + " / WL " + typeof app.win.WL + " / " + app.errors.join(" "));
+      ok("the field is put out of service, and so are both buttons beside it",
+         $(app, "word").disabled === true && $(app, "submit").disabled === true &&
+         $(app, "undo").disabled === true,
+         "word " + $(app, "word").disabled + ", submit " + $(app, "submit").disabled +
+         ", undo " + $(app, "undo").disabled);
+      // Disabled is a state; being drawn as spent is what the player sees. Both
+      // read back the muted ink and the edge boundary the rest of the page uses
+      // for a control that has nothing left to do, not the full ink they had.
+      var muted = cs(app.doc.documentElement).getPropertyValue("--muted").trim();
+      var probe = app.doc.createElement("div");
+      app.doc.body.appendChild(probe);
+      probe.style.color = muted;
+      var mutedRGB = cs(probe).color;
+      probe.style.color = cs(app.doc.documentElement).getPropertyValue("--ink").trim();
+      var inkRGB = cs(probe).color;
+      probe.parentNode.removeChild(probe);
+      ok("and both are drawn as spent rather than at full ink",
+         cs($(app, "submit")).color === mutedRGB && cs($(app, "undo")).color === mutedRGB &&
+         mutedRGB !== inkRGB,
+         "submit " + cs($(app, "submit")).color + ", undo " + cs($(app, "undo")).color +
+         ", muted " + mutedRGB + ", ink " + inkRGB);
+      // The button cannot be pressed now, but the form can still be submitted —
+      // and a submit nobody stops is a page load that discards the message. The
+      // probe is registered after the page's own handler, so what it reads is
+      // whether the page already stopped it; it then stops it itself, because a
+      // navigating harness frame proves nothing twice.
+      return new Promise(function (res) {
+        var f = $(app, "play");
+        f.addEventListener("submit", function (e) {
+          var was = e.defaultPrevented;
+          e.preventDefault();
+          res(was);
+        });
+        f.requestSubmit();
+      }).then(function (wasPrevented) {
+        ok("and a submit that reaches the form is stopped, not handed to the browser as a page load",
+           wasPrevented === true, "defaultPrevented at the probe: " + wasPrevented);
+        app.close();
+      });
+    });
+  }
+
   function finish() {
     try { if (saved === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, saved); }
     catch (e) { /* ignore */ }
@@ -2782,7 +2852,8 @@
       .then(function () { return copiedLabelFits(); })
       .then(function () { return disabledField(); })
       .then(function () { return rungLabels(); })
-      .then(function () { return pointerStates(); });
+      .then(function () { return pointerStates(); })
+      .then(function () { return noPuzzle(); });
   }).then(finish, function (err) {
     group("harness");
     if (String(err.message) === "sandboxed") {

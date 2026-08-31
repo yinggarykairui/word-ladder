@@ -796,6 +796,19 @@
     // Unreachable with the shipped list; never a blank page if it ever is.
     el.status.textContent = "no puzzle for this date";
     el.word.disabled = true;
+    // Everything that wires this page up is below this return, including the
+    // form's own submit handler — so a Submit left live here is a button with
+    // nothing behind it that falls through to the browser's default: measured
+    // on a copy of this file with the list cut to two isolated words, one press
+    // performed a native form GET and reloaded the page (…/index.html ->
+    // …/index.html?), throwing away the one line that had just explained why
+    // there is no board. Undo has no chain to shorten either, and both rendered
+    // at full ink beside a field that was correctly dotted and greyed. Both are
+    // spent here, drawn as spent by `button:disabled` and out of the tab order,
+    // and the form is stopped where it stands rather than left to the default.
+    el.submit.disabled = true;
+    el.undo.disabled = true;
+    el.form.addEventListener("submit", function (e) { e.preventDefault(); });
     return;
   }
 
