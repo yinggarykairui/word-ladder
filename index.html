@@ -850,8 +850,12 @@
     // "" sorts before every date string, and YYYY-MM-DD compares
     // chronologically as text.
     var mine = store.lastSolved || "", theirs = cur.lastSolved || "";
+    // Strictly later only. Two writes naming the same date banked the same day
+    // from the same history and agree; taking the larger of the two on a tie
+    // would also quietly repair a double-bank, which is a bug the once-per-date
+    // guard in commit() is there to prevent and a row in tests.html is there to
+    // catch. A merge must not stand in for a guard.
     if (theirs > mine) { store.lastSolved = cur.lastSolved; store.streak = cur.streak; }
-    else if (theirs === mine && cur.streak > store.streak) store.streak = cur.streak;
     if (cur.solved && cur.puzzle === store.puzzle) { solved = true; store.solved = true; }
   }
 

@@ -812,17 +812,15 @@
       return openApp("", 390, 844);
     }).then(function (a) {
       // undo() calls save() as well, so the loss never needed an accepted rung.
-      // This board banks today itself, so the date it holds and the date under
-      // it are the same one — the tie the pair rule has to break, and it breaks
-      // it towards the longer history, which is the tab that saw further back.
       A = a;
-      solveIn(A);
+      var path = A.WL.pathOf(A.WL.puzzle).map(function (x) { return x.toUpperCase(); });
+      play(A, path[1]);
       // a newer record lands under this board between its two writes
       seed(JSON.stringify({ v: 1, puzzle: today, chain: ["AAAA"], solved: true,
                             lastSolved: today, streak: 9, best: 12 }));
       $(A, "undo").click();
       var s = blobOf();
-      ok("(D1) an Undo in a stale tab banks nothing back over a longer streak for the same date",
+      ok("(D1) an Undo in a stale tab banks nothing back over a newer streak",
          s.streak === 9 && s.lastSolved === today, JSON.stringify(s));
       ok("(D1) and keeps the higher best of the two",
          s.best === 12, JSON.stringify(s));
