@@ -298,10 +298,25 @@
          src.indexOf('"https://yinggarykairui.github.io/word-ladder/"') !== -1,
          (src.match(/https:\/\/[^"'\s]*/g) || []).join(" "));
       ok("index.html uses the storage key word-ladder.v1", src.indexOf('"word-ladder.v1"') !== -1);
+      // The empty touchstart listener is the only part of the pointer commit
+      // that does anything on the phone that commit is about: iOS Safari
+      // applies :active to a tapped control only while something in the
+      // document is listening for touch, so without it the press rule and the
+      // @media (hover: hover) wrapper around :hover are both inert exactly
+      // where the tap is. Nothing in a headless Chromium can see it — the four
+      // rows about the rules themselves all passed with the whole block
+      // deleted — so the registration is asserted here, where the source is
+      // already the subject. Passive, because a touch listener that could call
+      // preventDefault makes the browser wait for it before it scrolls.
+      var touch = src.match(/addEventListener\(\s*"touchstart"[\s\S]{0,200}?\)\s*;/);
+      ok("index.html registers the passive touchstart listener that makes :active fire on iOS",
+         !!touch && /passive:\s*true/.test(touch[0]),
+         touch ? touch[0].replace(/\s+/g, " ") : "no touchstart listener in the source");
     }, function () {
       ["contains no Math.random", "calls no local-time date getters", "never touches innerHTML",
        "makes no network calls", "loads no external asset",
-       "carries the share link as its only absolute URL", "uses the storage key word-ladder.v1"]
+       "carries the share link as its only absolute URL", "uses the storage key word-ladder.v1",
+       "registers the passive touchstart listener that makes :active fire on iOS"]
         .forEach(function (n) { skipped("index.html " + n, "source unreadable from file:// — serve over http"); });
     });
   }
