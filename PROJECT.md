@@ -175,11 +175,39 @@ that were decisions rather than instrumentation. Scope and fence:
   stolen into the field at 320×568; at 16px, 0 of 5. Neither gap may be scaled
   down for vertical compactness — `tests.html` asserts both.
 
-- **Two tabs, last write wins.** Open the puzzle in two tabs, play a rung in
-  each, and reloading the first shows only the second's chain: every write is a
-  whole-blob `setItem` and nothing listens for the `storage` event. Accepted for
-  v0 — the loss is one puzzle's chain, never the streak, and the storage-event
-  merge is a design question (which chain wins?) rather than a bug fix.
+- **Two tabs: the chain is last write wins, the record is merged.** The line
+  that used to stand here said the loss was "one puzzle's chain, never the
+  streak", and that clause was false. It was never measured; it was assumed from
+  the shape of the code, and it was the whole justification for leaving the
+  thread open. Driven for the first time on day 037: seed a 4-day streak banked
+  yesterday, open tab A and leave it on the fresh board, solve the day in tab B
+  (`streak 5 · best 5`, `lastSolved` today, `solved: true`, the solved chain in
+  storage), then play one legal rung in tab A — and storage came back
+  `streak 4 · best 4`, `lastSolved` yesterday, `solved: false`. The streak, the
+  `best` and the day's solve were gone, silently and with no way back.
+  `save()` wrote `store` — a snapshot taken at load — back as a whole blob with
+  no re-read, so any write put that snapshot over everything since; `undo()`
+  saves too, so the loss did not even need an accepted rung. The same hole opens
+  in a single tab, because `today` is read once at load: a tab left open across
+  UTC midnight keeps playing and saving the previous day's board.
+
+  `save()` now re-reads the stored blob immediately before `setItem` and merges
+  the fields that are facts about the player rather than about the board in
+  front of this tab: `best` is the higher of the two, `lastSolved` and `streak`
+  travel as a pair so the later date wins and brings its own streak with it
+  (a tie between two writes for the same date keeps the longer streak), and a
+  solve of *this* date recorded by anyone is this tab's solve too. A save that
+  banked nothing can no longer rewrite a streak it never touched. `readStore()`
+  returning junk, `null` or a throw means there is nothing to merge, not a
+  broken board.
+
+  What is still last write wins is the chain, and that part of the old entry
+  stands: reload the stale tab and you see the other tab's rungs replaced by
+  yours. Which chain should win is a design question, not a bug — and losing one
+  puzzle's rungs is not losing the record of having played. There is still no
+  `storage` listener and no live cross-tab sync; the merge happens on this tab's
+  own writes. Asserted in `tests.html` with two boards held open at once, and
+  every branch of the merge mutation-tested individually.
 
 - **The ladder stops at the target.** Cycle 2's live-input fix let a legal rung
   be played *past* the target, which stored a chain the loader refuses on read

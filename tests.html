@@ -763,6 +763,90 @@
   }
   function blobOf() { try { return JSON.parse(stored()); } catch (e) { return null; } }
 
+  /* -------------------------- two tabs (D1) --------------------------------
+     save() wrote `store` — a snapshot taken at load — back whole, with no
+     re-read, so a stale tab's next write put that snapshot over everything
+     since. Measured before the fix: a tab left on a fresh board while another
+     tab solved the day turned "streak 5 · best 5, solved" back into
+     "streak 4 · best 4, unsolved" on one legal rung, and undo() saves too,
+     so it did not even need an accepted rung. Two boards are held open at once
+     here, which is the only way to see it — the iframes share the parent's
+     origin, so they share the one localStorage a real second tab would.
+
+     What is asserted is the split: the record of having played survives, the
+     chain does not. The chain is still last write wins by decision, and the
+     row that says so is here so the decision cannot rot into a claim. */
+  function twoTabs(WL) {
+    group("a stale tab loses its chain, never the record (D1)");
+    var today = WL.today, yest = WL.shiftDays(today, -1);
+    var A = null;
+    seed(JSON.stringify({ v: 1, puzzle: yest, chain: ["AAAA"], solved: true,
+                          lastSolved: yest, streak: 4, best: 4 }));
+    return openApp("", 390, 844).then(function (a) {
+      A = a;                                   // tab A, opened and then left alone
+      ok("(D1) tab A opens on the 4-day streak banked yesterday",
+         $(A, "streak").textContent === "streak 4 · best 4", $(A, "streak").textContent);
+      return openApp("", 390, 844);
+    }).then(function (B) {                     // tab B, opened after it and solved
+      solveIn(B);
+      var b = blobOf();
+      ok("(D1) tab B solves today and banks streak 5 over it",
+         $(B, "streak").textContent === "streak 5 · best 5" && b.streak === 5 &&
+         b.best === 5 && b.lastSolved === today && b.solved === true, JSON.stringify(b));
+      B.close();
+      var path = A.WL.pathOf(A.WL.puzzle).map(function (x) { return x.toUpperCase(); });
+      play(A, path[1]);                        // one legal rung in the stale tab
+      var s = blobOf();
+      ok("(D1) a rung in the stale tab leaves the later lastSolved and its streak standing",
+         s.streak === 5 && s.lastSolved === today, JSON.stringify(s));
+      ok("(D1) and leaves the day recorded as solved",
+         s.solved === true, JSON.stringify(s));
+      ok("(D1) and the stale tab stops claiming the streak it loaded with",
+         $(A, "streak").textContent === "streak 5 · best 5" &&
+         $(A, "status").textContent === "solved today · best possible " + A.WL.puzzle.par,
+         $(A, "streak").textContent + " / " + $(A, "status").textContent);
+      ok("(D1) the chain is the one thing it does overwrite, which is the decision, not the bug",
+         s.chain.length === 2 && s.chain[1] === path[1], s.chain.join(">"));
+      A.close();
+      seed(null);
+      return openApp("", 390, 844);
+    }).then(function (a) {
+      // undo() calls save() as well, so the loss never needed an accepted rung.
+      // This board banks today itself, so the date it holds and the date under
+      // it are the same one — the tie the pair rule has to break, and it breaks
+      // it towards the longer history, which is the tab that saw further back.
+      A = a;
+      solveIn(A);
+      // a newer record lands under this board between its two writes
+      seed(JSON.stringify({ v: 1, puzzle: today, chain: ["AAAA"], solved: true,
+                            lastSolved: today, streak: 9, best: 12 }));
+      $(A, "undo").click();
+      var s = blobOf();
+      ok("(D1) an Undo in a stale tab banks nothing back over a longer streak for the same date",
+         s.streak === 9 && s.lastSolved === today, JSON.stringify(s));
+      ok("(D1) and keeps the higher best of the two",
+         s.best === 12, JSON.stringify(s));
+      A.close();
+      seed(null);
+      return openApp("", 390, 844);
+    }).then(function (a) {
+      // The re-read runs on every write, so it meets whatever is in storage —
+      // including a blob no version of this page wrote. A merge that cannot
+      // read is a merge with nothing to merge, not a broken board.
+      A = a;
+      var path = A.WL.pathOf(A.WL.puzzle).map(function (x) { return x.toUpperCase(); });
+      play(A, path[1]);
+      seed("{not json at all");
+      play(A, path[2]);
+      var s = blobOf();
+      ok("(D1) junk landing under a live board does not break the rung on top of it",
+         s && s.chain.length === 3 && s.chain[2] === path[2] && A.errors.length === 0,
+         (s ? s.chain.join(">") : String(stored())) + " / " + A.errors.join(" "));
+      A.close();
+      seed(null);
+    });
+  }
+
   function streakMatrix(WL) {
     group("streak — key word-ladder.v1, header and stored blob both asserted");
     var today = WL.today, yest = WL.shiftDays(today, -1), old = WL.shiftDays(today, -3);
@@ -2452,6 +2536,7 @@
     return sourceChecks()
       .then(function () { listAndPuzzles(app); app.close(); })
       .then(function () { return inputMatrix(); })
+      .then(function () { return twoTabs(WL); })
       .then(function () { return streakMatrix(WL); })
       .then(function () { return progressMatrix(WL); })
       .then(function () { return layoutAndTaps(320, 568); })

@@ -825,8 +825,39 @@
     return true;
   }
 
+  // `store` is a snapshot taken at load, and save() used to write it whole with
+  // no re-read, so any write put that snapshot back over everything since.
+  // Measured: tab A sitting on a fresh board while tab B solved the day, then
+  // one legal rung in tab A — "streak 5 · best 5, solved" reverted to
+  // "streak 4 · best 4, unsolved". undo() saves too, so it did not even need
+  // an accepted rung. The same hole opens in one tab: `today` is read once at
+  // load, so a tab left open across UTC midnight keeps saving yesterday's board.
+  //
+  // The fields that are facts about the player rather than about the board in
+  // front of this tab are merged instead of overwritten. `best` is the higher of
+  // the two. `lastSolved` and `streak` travel as a pair: the later date wins and
+  // brings its own streak with it, so a save that banked nothing cannot rewrite
+  // a streak it never touched. A solve of *this* date recorded by anyone is this
+  // tab's solve too, because the win belongs to the date and not to the chain.
+  //
+  // The chain itself is still last write wins. Which chain should win is a
+  // design question rather than a bug, and losing one puzzle's rungs is not
+  // losing the record of having played.
+  function merge() {
+    var cur = readStore();          // junk, absent or a throw all come back null
+    if (!cur) return;
+    if (cur.best > store.best) store.best = cur.best;
+    // "" sorts before every date string, and YYYY-MM-DD compares
+    // chronologically as text.
+    var mine = store.lastSolved || "", theirs = cur.lastSolved || "";
+    if (theirs > mine) { store.lastSolved = cur.lastSolved; store.streak = cur.streak; }
+    else if (theirs === mine && cur.streak > store.streak) store.streak = cur.streak;
+    if (cur.solved && cur.puzzle === store.puzzle) { solved = true; store.solved = true; }
+  }
+
   function save() {
     if (readOnly) return;
+    merge();
     // setItem throws in private-mode Safari and on a full quota; the game keeps
     // working unpersisted.
     try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) { /* ignore */ }
