@@ -159,6 +159,25 @@
     });
   }
 
+  // A page booted with its clock pinned to one UTC date. index.html reads
+  // `today` once, from `new Date()`, so "a tab left open across UTC midnight"
+  // and "a device whose clock ran ahead" are both just this page with a
+  // different Date under it. The shim is spliced in immediately before the
+  // page's own <script>, so the doctype and the head are untouched and the
+  // page never sees the real clock. The rows that use it assert WL.today first,
+  // because a shim that silently failed would leave them measuring an ordinary
+  // tab and passing for the wrong reason.
+  function openAt(dateStr, w, h) {
+    var tag = "<scr" + "ipt>";
+    var shim = tag + "(function(){var R=Date,T=R.parse(" +
+      JSON.stringify(dateStr + "T12:00:00Z") + ");" +
+      "function D(){var a=[].slice.call(arguments);" +
+      "return a.length?new (R.bind.apply(R,[null].concat(a))):new R(T);}" +
+      "D.prototype=R.prototype;D.now=function(){return T;};" +
+      "D.parse=R.parse;D.UTC=R.UTC;window.Date=D;}());</scr" + "ipt>";
+    return openWritten(w, h, SRC.replace(tag, shim + tag));
+  }
+
   function openApp(query, w, h, early) {
     if (early && !query && SRC) return openWritten(w, h);
     return new Promise(function (resolve, reject) {
@@ -848,6 +867,123 @@
          (s ? s.chain.join(">") : String(stored())) + " / " + A.errors.join(" "));
       A.close();
       seed(null);
+      return null;
+    }).then(function () {
+      /* -------- the dates that are not this tab's today (D1, cont.) --------
+         Every row above is same-date, which left the merge's two date-crossing
+         cases uncovered: a `lastSolved` from a clock that ran ahead, and the
+         tab left open across UTC midnight that merge()'s own comment names as
+         its motivation. Both need a page whose clock is not this machine's, so
+         both are driven through openAt(). */
+      if (!SRC) {
+        skipped("(D1) the rows that need a pinned clock",
+                "source unreadable from file:// — serve over http");
+        return null;
+      }
+      // A `lastSolved` dated after today needs no hand-edited blob: a phone
+      // whose clock ran ahead — one restoring from a flat battery, or set
+      // forward by hand — banks one during ordinary play, and the date stays in
+      // storage after the clock is corrected. It is strictly greater than every
+      // date commit() can ever bank, so an unclamped merge reads it and its
+      // streak back over the bank on every write, forever. Measured on the tip
+      // before the clamp, seeded with streak 3 and solving three days running:
+      // `streak 0 · best 3` on all three, under a status line saying the day
+      // was solved, and `best` frozen with it because `best` only ever grows
+      // from a banked streak. The save() this replaced healed itself on the
+      // first solve, by overwriting the date.
+      var ahead = WL.shiftDays(today, 40), d1 = WL.shiftDays(today, 1),
+          d2 = WL.shiftDays(today, 2), d3 = WL.shiftDays(today, 3), moves = 0;
+      seed(JSON.stringify({ v: 1, puzzle: null, chain: null, solved: false,
+                            lastSolved: ahead, streak: 3, best: 3 }));
+      return openApp("", 390, 844).then(function (app) {
+        moves = solveIn(app);
+        var b = blobOf();
+        ok("(D1) a lastSolved from a clock that ran ahead does not win the merge — today's solve is what gets banked",
+           b.lastSolved === today && b.streak === 1 && b.best === 3, JSON.stringify(b));
+        ok("(D1) and the header agrees with the blob under it, instead of reading streak 0 over a solved board",
+           $(app, "streak").textContent === "streak 1 · best 3" &&
+           $(app, "status").textContent ===
+             "solved in " + moves + " moves · best possible " + app.WL.puzzle.par,
+           $(app, "streak").textContent + " / " + $(app, "status").textContent);
+        app.close();
+        return openAt(d1, 390, 844);
+      }).then(function (app) {
+        ok("(D1) the next day's tab is really on the next day, and reads the streak the future date used to hide",
+           app.WL.today === d1 && app.WL.puzzleDate === d1 && app.WL.readOnly === false &&
+           $(app, "streak").textContent === "streak 1 · best 3",
+           app.WL.today + " / " + $(app, "streak").textContent);
+        solveIn(app);
+        var b = blobOf();
+        ok("(D1) and its solve builds on yesterday's rather than restoring the future pair",
+           b.streak === 2 && b.lastSolved === d1 &&
+           $(app, "streak").textContent === "streak 2 · best 3",
+           JSON.stringify(b) + " / " + $(app, "streak").textContent);
+        app.close();
+        return openAt(d2, 390, 844);
+      }).then(function (app) {
+        solveIn(app);
+        var b = blobOf();
+        ok("(D1) the third day reaches the streak the frozen pair was only claiming",
+           b.streak === 3 && b.best === 3 && b.lastSolved === d2 &&
+           $(app, "streak").textContent === "streak 3 · best 3",
+           JSON.stringify(b) + " / " + $(app, "streak").textContent);
+        app.close();
+        return openAt(d3, 390, 844);
+      }).then(function (app) {
+        solveIn(app);
+        var b = blobOf();
+        ok("(D1) and the fourth moves `best`, which a streak frozen under a future date can never do",
+           b.streak === 4 && b.best === 4 && b.lastSolved === d3 &&
+           $(app, "streak").textContent === "streak 4 · best 4",
+           JSON.stringify(b) + " / " + $(app, "streak").textContent);
+        app.close();
+        seed(null);
+      });
+    }).then(function () {
+      if (!SRC) return null;
+      /* The date boundary itself: tab Y was opened yesterday and is still on
+         yesterday's board, tab B is opened today and solves the day. What the
+         rows below fix in place is a tradeoff, not a repair — the chain is last
+         write wins by decision, and because merge() adopts `solved` only when
+         the stored blob names the puzzle this tab is playing, the day's solved
+         flag travels with the chain: Y's write leaves the streak banked today
+         standing and the day itself offered again. That is the documented
+         behaviour (PROJECT.md §4) and it is asserted here so it stays a
+         decision rather than becoming an accident. */
+      var twoAgo = WL.shiftDays(today, -2), Y = null;
+      seed(JSON.stringify({ v: 1, puzzle: null, chain: null, solved: false,
+                            lastSolved: twoAgo, streak: 4, best: 4 }));
+      return openAt(yest, 390, 844).then(function (a) {
+        Y = a;
+        ok("(D1) the tab left open across UTC midnight is really still on yesterday's board",
+           Y.WL.today === yest && Y.WL.puzzleDate === yest && Y.WL.readOnly === false &&
+           $(Y, "streak").textContent === "streak 4 · best 4",
+           Y.WL.today + " / " + Y.WL.puzzleDate + " / " + $(Y, "streak").textContent);
+        return openApp("", 390, 844);
+      }).then(function (B) {
+        solveIn(B);                            // today, in a tab opened today
+        B.close();
+        var path = Y.WL.pathOf(Y.WL.puzzle).map(function (x) { return x.toUpperCase(); });
+        play(Y, path[1]);                      // one legal rung on yesterday's board
+        var s = blobOf();
+        ok("(D1) a rung played in it leaves today's lastSolved and the streak banked today standing",
+           s.lastSolved === today && s.streak === 1 && s.best === 4, JSON.stringify(s));
+        ok("(D1) and yesterday's board does not take today's solve for its own",
+           s.solved === false && s.puzzle === yest &&
+           $(Y, "status").textContent === "best possible: " + Y.WL.puzzle.par + " moves",
+           JSON.stringify(s) + " / " + $(Y, "status").textContent);
+        Y.close();
+        return openApp("", 390, 844);
+      }).then(function (C) {
+        ok("(D1) so a fresh tab today keeps the streak and is offered the day again, unsolved — last write wins reaching `solved`, by decision",
+           $(C, "streak").textContent === "streak 1 · best 4" &&
+           $(C, "status").textContent === "best possible: " + C.WL.puzzle.par + " moves" &&
+           chainWords(C).length === 1,
+           $(C, "streak").textContent + " / " + $(C, "status").textContent +
+           " / " + chainWords(C).join(">"));
+        C.close();
+        seed(null);
+      });
     });
   }
 

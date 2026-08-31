@@ -884,6 +884,22 @@
     // "" sorts before every date string, and YYYY-MM-DD compares
     // chronologically as text.
     var mine = store.lastSolved || "", theirs = cur.lastSolved || "";
+    // A stored date later than this tab's today is one of two things, and from
+    // here they look identical: a genuinely newer write from a tab that has
+    // already crossed UTC midnight — the case this merge exists for — or the
+    // residue of a clock that ran ahead. A phone restoring from a flat battery
+    // or a clock pushed forward by hand banks a future `lastSolved` during
+    // ordinary play, and it survives the clock being corrected. So the tie is
+    // broken by what this tab is holding: a future date may not outrank a date
+    // this tab has itself banked today. Without that line the stored date is
+    // strictly greater than every date commit() can ever bank again, so it wins
+    // this comparison on every write and puts its own stale streak straight
+    // back over the bank, permanently. Measured, seeded at 2099-01-01 with
+    // streak 3: three consecutive solves each read back `streak 0 · best 3`
+    // under a status line saying the day was solved, and `best` froze with the
+    // streak because `best` only ever grows from a banked one. The save() this
+    // replaced healed itself here by overwriting the date on the next solve.
+    if (theirs > today && mine >= today) theirs = "";
     // Strictly later only. Two writes naming the same date banked the same day
     // from the same history and agree; taking the larger of the two on a tie
     // would also quietly repair a double-bank, which is a bug the once-per-date
