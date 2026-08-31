@@ -2665,6 +2665,79 @@
     });
   }
 
+  /* Hover, press, and the phone in between (D3).
+
+     :hover was the page's only pointer style, and it was a full ink inversion.
+     On iOS Safari and most Android Chrome :hover sticks after a tap until the
+     next tap elsewhere, so a tapped button stayed a solid black block; and with
+     no :active rule, that stuck state was also the only thing a tap ever showed.
+     A browser will not let a script fake a real press, so what is measured here
+     is the sheet the browser is actually using: which rules are behind a
+     hover-capable guard, which are not, and what the press rule paints. */
+  function pointerStates() {
+    return openApp("?d=" + REPLAY, 390, 844).then(function (app) {
+      group("hover is asked for only where hovering is real, and a press has its own state");
+      var hoverRules = [], activeRules = [];
+      function walk(rules, conds) {
+        for (var i = 0; i < rules.length; i++) {
+          var r = rules[i];
+          if (r.cssRules && typeof r.conditionText === "string") {
+            walk(r.cssRules, conds.concat([r.conditionText]));
+            continue;
+          }
+          if (!r.selectorText) continue;
+          var e = { sel: r.selectorText, conds: conds.join(" && "), style: r.style };
+          if (r.selectorText.indexOf(":hover") !== -1) hoverRules.push(e);
+          if (r.selectorText.indexOf(":active") !== -1) activeRules.push(e);
+        }
+      }
+      var sheets = app.doc.styleSheets, k;
+      for (k = 0; k < sheets.length; k++) walk(sheets[k].cssRules, []);
+
+      var unguarded = hoverRules.filter(function (e) { return e.conds.indexOf("hover") === -1; });
+      ok("every :hover rule in the sheet sits behind a query for a pointer that can really hover",
+         hoverRules.length > 0 && unguarded.length === 0,
+         unguarded.map(function (e) { return e.sel + " @ " + (e.conds || "no query"); }).join(" ; ") ||
+         hoverRules.map(function (e) { return e.sel + " @ " + e.conds; }).join(" ; "));
+
+      var press = activeRules.filter(function (e) { return e.sel.indexOf("button") === 0; });
+      ok("a press has a rule of its own, and it is not behind that guard — a tap is where it is needed most",
+         press.length > 0 && press.filter(function (e) {
+           return e.conds.indexOf("hover") !== -1 || e.conds.indexOf("pointer") !== -1;
+         }).length === 0,
+         press.map(function (e) { return e.sel + " @ " + (e.conds || "no query"); }).join(" ; ") || "none");
+
+      // What the rule paints, not what it says: the declared value is resolved
+      // by the browser against this page's own custom properties and compared
+      // with the colour a resting button is actually drawn in.
+      var probe = app.doc.createElement("div");
+      app.doc.body.appendChild(probe);
+      var declared = press.length ? press[0].style.backgroundColor : "";
+      probe.style.backgroundColor = declared;
+      var pressed = app.win.getComputedStyle(probe).backgroundColor;
+      var resting = app.win.getComputedStyle($(app, "undo")).backgroundColor;
+      probe.parentNode.removeChild(probe);
+      ok("and it repaints the button — the pressed fill resolves to a colour the resting button is not",
+         declared !== "" && pressed !== resting && pressed !== "rgba(0, 0, 0, 0)",
+         declared + " -> " + pressed + ", resting " + resting);
+
+      // The palette is closed: a press may not introduce a colour the page does
+      // not already own.
+      var root = app.win.getComputedStyle(app.doc.documentElement);
+      var palette = ["--paper", "--ink", "--muted", "--accent", "--rule", "--edge"].map(function (n) {
+        probe = app.doc.createElement("div");
+        app.doc.body.appendChild(probe);
+        probe.style.backgroundColor = root.getPropertyValue(n).trim();
+        var v = app.win.getComputedStyle(probe).backgroundColor;
+        probe.parentNode.removeChild(probe);
+        return v;
+      });
+      ok("and it does so in a colour the palette already holds",
+         palette.indexOf(pressed) !== -1, pressed + " in [" + palette.join(", ") + "]");
+      app.close();
+    });
+  }
+
   function finish() {
     try { if (saved === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, saved); }
     catch (e) { /* ignore */ }
@@ -2708,7 +2781,8 @@
       .then(function () { group("settle()'s guards, told apart"); return shareGuards(); })
       .then(function () { return copiedLabelFits(); })
       .then(function () { return disabledField(); })
-      .then(function () { return rungLabels(); });
+      .then(function () { return rungLabels(); })
+      .then(function () { return pointerStates(); });
   }).then(finish, function (err) {
     group("harness");
     if (String(err.message) === "sandboxed") {
