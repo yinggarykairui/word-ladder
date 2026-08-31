@@ -929,6 +929,35 @@
          JSON.stringify(b) + " / " + $(app, "status").textContent);
       app.close();
       return null;
+    }).then(function () {                             // (h) banked once per date
+      // The guard is `store.lastSolved !== puzzleDate`, and (g) above cannot
+      // see it: (g) starts from no storage, so the day it re-banks recomputes
+      // to the same 1 it already had and the guard's absence is invisible. It
+      // takes a streak with somewhere to fall from. Measured with the guard
+      // removed: solve -> streak 5 · best 5, Undo, replay the final word ->
+      // "streak 1 · best 5", and the share line reads "· streak 1", because the
+      // second bank asks "was the last solve yesterday?" of a lastSolved that
+      // is already today and answers by starting over. This is the arithmetic
+      // the header, the blob and the share line all quote.
+      seed(JSON.stringify({ v: 1, puzzle: null, chain: null, solved: false,
+                            lastSolved: yest, streak: 4, best: 4 }));
+      return openApp("", 390, 844).then(function (app) {
+        var path = app.WL.pathOf(app.WL.puzzle).map(function (x) { return x.toUpperCase(); });
+        solveIn(app);
+        ok("(h) solving on top of a 4-day streak banked yesterday makes it 5",
+           header(app) === "streak 5 · best 5" && blobOf().streak === 5,
+           header(app) + " / " + JSON.stringify(blobOf()));
+        $(app, "undo").click();
+        play(app, path[path.length - 1]);
+        var b = blobOf();
+        ok("(h) Undo and replay the final word does not bank the date a second time",
+           header(app) === "streak 5 · best 5" && b.streak === 5 && b.best === 5 &&
+           b.lastSolved === today, header(app) + " / " + JSON.stringify(b));
+        ok("(h) and the line Share copies still names that streak",
+           app.WL.shareText().split("\n")[0].slice(-11) === " · streak 5",
+           app.WL.shareText().split("\n")[0]);
+        app.close();
+      });
     }).then(function () {                             // (e) corrupt blobs
       var bad = [
         ["empty string", ""],
@@ -1399,6 +1428,73 @@
          (blobOf().solved === true) === ($(app, "status").textContent.indexOf("solved") === 0 &&
                                           $(app, "targetlab").textContent === "solved"),
          $(app, "status").textContent + " / " + $(app, "targetlab").textContent);
+      app.close();
+      seed(null);
+    });
+  }
+
+  /* legalChain()'s three restore guards, one row each.
+
+     The invariant above (R1) asks whether the page can ever *write* a chain the
+     loader refuses. These rows ask the other half: does the loader actually
+     refuse one. A stored chain is the only input to this page that nothing else
+     validates — it is hand-writable, it outlives a word-list edit, and load()
+     draws whatever it accepts — and each of the three guards was individually
+     deletable with the suite green, because every walked path was legal and no
+     row ever handed the loader an illegal one. */
+  function restoreGuards(WL) {
+    group("the stored chains the loader refuses to restore");
+    seed(null);
+    var START, TARGET, path, beyond;
+    function loadWith(chain) {
+      seed(JSON.stringify({ v: 1, puzzle: WL.today, chain: chain, solved: false,
+                            lastSolved: null, streak: 0, best: 0 }));
+      return openApp("", 390, 844);
+    }
+    return openApp("", 390, 844).then(function (app) {
+      path = app.WL.pathOf(app.WL.puzzle).map(function (x) { return x.toUpperCase(); });
+      START = path[0];
+      TARGET = path[path.length - 1];
+      // a real word one letter off the target that the path has not used
+      var ns = app.WL.NBR[TARGET.toLowerCase()], i, u;
+      for (i = 0; i < ns.length; i++) {
+        u = ns[i].toUpperCase();
+        if (path.indexOf(u) === -1) { beyond = u; break; }
+      }
+      app.close();
+      return loadWith([START, path[1]]);
+    }).then(function (app) {
+      // Without this the three rows below could all be passing because the blob
+      // never reached legalChain() at all.
+      ok("(control) a legal stored chain IS restored, so the three refusals below are not vacuous",
+         app.WL.state().chain.join(" ") === START + " " + path[1],
+         app.WL.state().chain.join(" "));
+      app.close();
+      // Yesterday's chain under today's date, a list edit that moved the start
+      // word, a hand-written blob: a ladder that does not begin where this
+      // date's ladder begins is not this date's ladder.
+      return loadWith([path[1], path[2]]);
+    }).then(function (app) {
+      ok("a stored chain that does not begin at this date's start word is refused",
+         app.WL.state().chain.join(" ") === START, app.WL.state().chain.join(" "));
+      app.close();
+      // Every rung is a legal one-letter step here; the only thing wrong with
+      // it is that it plays a word twice, which the play loop refuses and the
+      // loader has to refuse for the same reason.
+      return loadWith([START, path[1], START]);
+    }).then(function (app) {
+      ok("a stored chain that plays the same word twice is refused",
+         app.WL.state().chain.join(" ") === START, app.WL.state().chain.join(" "));
+      app.close();
+      // The shape R1 exists to keep the page from ever writing: the target
+      // buried mid-chain leaves a ladder that can never be completed, because
+      // there is nothing left to play that reaches an end already used.
+      return loadWith(path.concat([beyond]));
+    }).then(function (app) {
+      ok("a stored chain that buries the target mid-way is refused",
+         app.WL.state().chain.join(" ") === START &&
+         $(app, "targetlab").textContent === "target",
+         app.WL.state().chain.join(" ") + " / " + $(app, "targetlab").textContent);
       app.close();
       seed(null);
     });
@@ -2226,6 +2322,31 @@
         ok("there is room under the field for the ring that says it has the caret at " + label,
            de.scrollHeight - (ta.bottom + app.win.scrollY) >= 4,
            "slack " + Math.round((de.scrollHeight - (ta.bottom + app.win.scrollY)) * 10) / 10 + "px");
+        // .roomier lends the ladder column 64px — the height --chrome is still
+        // budgeting for the input row that has been put away at the target.
+        // The open fallback box is standing in that same space, so it cannot be
+        // lent twice, and `atTarget && !shareOpen` is the term that says so.
+        // The class is not what is asserted here; what the class costs is.
+        // Measured at 320x568 with the fallback open: the document goes
+        // 568 -> 605 (+37) as shipped, and 568 -> 669 (+101) with the
+        // !shareOpen term dropped, because the column keeps a loan it is no
+        // longer using and the box is added under it.
+        var grew = de.scrollHeight - solvedH;
+        ok("opening the fallback costs the page the box and not the box plus the column's 64px loan at " + label,
+           grew <= 64, "document " + solvedH + " -> " + de.scrollHeight + " (+" + grew + ")");
+        if (label === "320x568") {
+          // 64 is not an arbitrary constant in the row above: this is the one
+          // viewport in the sweep where the column is at its ceiling, so it is
+          // the only one where the loan is visible at all. Forcing it back on
+          // under the open box measures exactly what the term is refusing.
+          var open = de.scrollHeight;
+          $(app, "chainbox").classList.add("roomier");
+          var loaned = de.scrollHeight;
+          $(app, "chainbox").classList.remove("roomier");
+          ok("and the loan, forced back on under the open box, is worth the 64px it is named for",
+             loaned - open >= 56 && de.scrollHeight === open,
+             open + " -> " + loaned + " with the loan (+" + (loaned - open) + "), back to " + de.scrollHeight);
+        }
         // The one line the page asks the player to read carefully enough to copy
         // is not the smallest text on the page.
         ok("the line the player is told to copy is set at the status line's size at " + label,
@@ -2503,10 +2624,43 @@
              return "?";
            }()) + " letter changed",
          $(app, "target").getAttribute("aria-label"));
+      // A label on its own announces nothing. The rung is a <div> whose text is
+      // split one letter to a span, so its implicit role is `generic` —
+      // naming-prohibited in ARIA — and an aria-label on it is dropped: the
+      // reader falls through to the per-letter StaticText children and spells
+      // the word out. role="img" is what makes the label a name.
+      //
+      // Nothing inside a page can read a computed accessible name: there is no
+      // DOM API for it, and this Chromium exposes neither Element.computedName
+      // nor getComputedAccessibleNode(). So the name was measured out of band
+      // against this same build, over CDP (Accessibility.enable +
+      // Accessibility.getFullAXTree). Shipped, a played rung comes back as
+      //   image "TAME, 1st letter changed"  with four StaticText children;
+      // with both setAttribute("role", "img") calls removed the same node is
+      //   generic  with the same four StaticText children under it.
+      // These two rows are the half of that a browser can see: the role that
+      // permits a name, over the letter-split content that makes one necessary.
+      var rungs = [].slice.call($(app, "chain").children).concat([$(app, "target")]);
+      var noRole = rungs.filter(function (r) { return r.getAttribute("role") !== "img"; });
+      ok("every rung carries the role that lets its label be a name and not be dropped",
+         rungs.length > 1 && noRole.length === 0,
+         noRole.map(function (r) {
+           return String(r.getAttribute("aria-label")) + " role=" + String(r.getAttribute("role"));
+         }).join(" ; ") || rungs.length + " rungs, every one role=img");
+      var notSplit = rungs.filter(function (r) {
+        return r.querySelectorAll("span").length !== 4 || r.textContent.length !== 4;
+      });
+      ok("and every rung is split one letter to a span, which is why it needs that role",
+         notSplit.length === 0,
+         notSplit.map(function (r) {
+           return r.textContent + ":" + r.querySelectorAll("span").length;
+         }).join(" ") || rungs.length + " rungs, four spans each");
       undoAll(app);
-      ok("an unplayed target is announced bare, because nothing has changed into it yet",
+      ok("an unplayed target keeps the role and is announced bare, because nothing has changed into it yet",
+         $(app, "target").getAttribute("role") === "img" &&
          $(app, "target").getAttribute("aria-label") === path[path.length - 1].toUpperCase(),
-         $(app, "target").getAttribute("aria-label"));
+         $(app, "target").getAttribute("aria-label") + " role=" +
+         String($(app, "target").getAttribute("role")));
       app.close();
     });
   }
@@ -2540,6 +2694,7 @@
       .then(function () { return layoutAndTaps(320, 568); })
       .then(function () { return layoutAndTaps(390, 844); })
       .then(function () { return roundTrip(WL); })
+      .then(function () { return restoreGuards(WL); })
       .then(function () { return liveRegion(); })
       .then(function () { return chainEdge(); })
       .then(function () { return messagePlacement(); })
