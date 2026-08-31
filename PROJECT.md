@@ -119,7 +119,7 @@ card and two residuals. States: `todo` · `wip` · `done` · `cut`.
 | 1.7 | `word-ladder.v1` storage: progress restore, streak/best arithmetic, lapsed-streak display rule, corrupt-blob tolerance, `?d=<other date>` read-only | done |
 | 1.8 | `tests.html`: determinism ×30 dates, solvability walk, list integrity, validation matrix (with positive rows), streak matrix (with a positive row) | done |
 | 1.9 | Phone-width + hit-box sweep at 320×568 and 390×844, whole-box, both directions | done — and shipped as assertions in `tests.html` after cycle 1 (m9) |
-| 1.10 | README made true, `screenshot.png` captured from the shipped build, LICENSE (MIT), description, topics | done — README, LICENSE and `screenshot.png` are in; the repo description is byte-equal to the README's opening sentence and eight topics are set, both written over the API by the shipper. The image day 017 shipped was a 1280×800 headless capture two moves into the 2026-08-10 puzzle; day 036 re-shot it (row 2.9) and the committed file is a 2560×1600 capture (1280×800 at 2×) of a solved and shared 2026-08-30 board. The old parenthetical was the day-017 caption, deleted from the README on day 036 and left standing in this cell, so the file described its own screenshot two different ways two sections apart — corrected day 037 |
+| 1.10 | README made true, `screenshot.png` captured from the shipped build, LICENSE (MIT), description, topics | done — README, LICENSE and `screenshot.png` are in; the repo description is byte-equal to the README's opening sentence and eight topics are set, both written over the API by the shipper. The image day 017 shipped was a 2560×1600 headless capture (1280×800 at 2×) two moves into the 2026-08-10 puzzle; day 036 re-shot it (row 2.9) and the committed file is a 2560×1600 capture (1280×800 at 2×) of a solved and shared 2026-08-30 board. The old parenthetical was the day-017 caption, deleted from the README on day 036 and left standing in this cell, so the file described its own screenshot two different ways two sections apart — corrected day 037. This cell then gave the two captures in different units, 1280×800 against 2560×1600, implying a resolution change between them that never happened: both blobs' IHDRs read 2560×1600, and the same units are given for both since cycle 3 |
 | 1.11 | Pages enabled from repo root; live URL confirmed loading the working build | done — Pages enabled from `main` / root at ship. The Pages API reports the site `built` at the shipped sha, and a fetch of `https://yinggarykairui.github.io/word-ladder/` returns the live page. Neither the fixer's nor the critics' sandbox can reach `yinggarykairui.github.io` (403 `host_not_allowed`), so the witness is the conductor's session on a different transport — three networks, three answers (LESSONS 2026-08-04) |
 
 Checklist items 1–7 in the issue comment map to: 1.4/1.5 → item 1; 1.5/1.8 →
@@ -196,20 +196,56 @@ that were decisions rather than instrumentation. Scope and fence:
   `save()` now re-reads the stored blob immediately before `setItem` and merges
   the fields that are facts about the player rather than about the board in
   front of this tab: `best` is the higher of the two, `lastSolved` and `streak`
-  travel as a pair so the later date wins and brings its own streak with it
-  (a tie between two writes for the same date keeps the longer streak), and a
-  solve of *this* date recorded by anyone is this tab's solve too. A save that
-  banked nothing can no longer rewrite a streak it never touched. `readStore()`
-  returning junk, `null` or a throw means there is nothing to merge, not a
-  broken board.
+  travel as a pair so the strictly later date wins and brings its own streak
+  with it, and a solve of *this* date recorded by anyone is this tab's solve
+  too. A save that banked nothing can no longer rewrite a streak it never
+  touched. `readStore()` returning junk, `null` or a throw means there is
+  nothing to merge, not a broken board.
+
+  Strictly later, and there is no tie-break: two writes naming the same date
+  banked the same day from the same history and agree, and taking the longer
+  streak on a tie would also quietly repair a double-bank — the bug the
+  once-per-date guard in `commit()` exists to prevent and a row in `tests.html`
+  exists to catch. A merge must not stand in for a guard. This paragraph said
+  the opposite until day 037 cycle 3: the tie-break clause was written in
+  `a230866` beside a merge that had one, `5fe09af` removed the branch the same
+  day, and the sentence outlived the code it described — through the truth
+  sweep that was meant to catch exactly this.
+
+  One date is refused before that comparison ever runs: a `lastSolved` later
+  than this tab's today may not outrank a date this tab has itself banked
+  today. A stored future date is strictly greater than every date `commit()`
+  can ever bank, so without that refusal it won the comparison on every write
+  and put its own stale streak straight back over the bank — permanently, and
+  in silence. Measured on the tip in cycle 2, seeded `lastSolved 2099-01-01`
+  with `streak 3` and then solving three consecutive days against a faked
+  clock: `streak 0 · best 3` on all three days, under a status line reading
+  `solved in 5 moves`, with `best` frozen as well because `best` only ever
+  grows from a banked streak. It takes no hand-edited blob — a phone restoring
+  from a flat battery, or a clock pushed forward by hand, banks a future date
+  during ordinary play — and once the clock was corrected there was no way back
+  short of clearing site data. The `save()` this merge replaced healed itself
+  here by overwriting the date on the next solve, and this is that same
+  self-healing written down. It is a date banked *today* that outranks a future
+  one, and not simply today's date, because the cross-midnight tab below sees a
+  genuinely newer write as "future" too.
 
   What is still last write wins is the chain, and that part of the old entry
   stands: reload the stale tab and you see the other tab's rungs replaced by
   yours. Which chain should win is a design question, not a bug — and losing one
-  puzzle's rungs is not losing the record of having played. There is still no
-  `storage` listener and no live cross-tab sync; the merge happens on this tab's
-  own writes. Asserted in `tests.html` with two boards held open at once, and
-  every branch of the merge mutation-tested individually.
+  puzzle's rungs is not losing the record of having played. Across a date
+  boundary that decision reaches one field further, and this is the shape of it:
+  tab B solves 08-31 while tab A has been open since 08-30, a rung played in A
+  leaves 08-31's `lastSolved` and its streak standing, but the blob A writes
+  names 08-30's puzzle, so `solved` travels with the chain and a fresh tab is
+  offered 08-31 again, unsolved, over the preserved streak. `merge()` adopts
+  `solved` only for the puzzle the writing tab is playing, because a solve is a
+  claim about a date and A is not playing that date. Deliberate, and now
+  asserted rather than assumed. There is still no `storage` listener and no live
+  cross-tab sync; the merge happens on this tab's own writes. Asserted in
+  `tests.html` with two boards held open at once — and, for the two cases that
+  cross a date, against a page booted with its clock pinned — every branch of
+  the merge mutation-tested individually.
 
 - **The ladder stops at the target.** Cycle 2's live-input fix let a legal rung
   be played *past* the target, which stored a chain the loader refuses on read
@@ -300,25 +336,33 @@ that were decisions rather than instrumentation. Scope and fence:
   zeroed under `?d=`; and the line quotes the status line word for word, since
   the README promises this number is named the same way everywhere.
 - **Opening the fallback grows the page on a short screen, and that is the
-  law working.** Measured with the box open: 360x640, 390x844 and 1280x800 take
-  it inside the 64px `.roomier` gives back and the document does not grow by a
-  pixel; 320x568 grows 17px; 667x375 and 844x390 grow 97px,
-  the column already sitting on its 4.8rem floor. (Re-measured day 037. This
-  list read "360x640, 390x844 and 1280x800 … do not grow by a pixel; 360x640
-  grows 3px" — 360x640 in both halves of its own sentence — and it read 37px
-  at 320x568, which was true until the fallback's message was corrected and
-  stopped wrapping to a second line there. The 64px the `!shareOpen` term
-  refuses to lend twice is asserted in `tests.html` now, as a bound on the
-  growth rather than as a class name.) (Re-measured in cycle 2, after the field went to
-  the status line's 0.82rem and gained 8px of clearance under it so its focus
-  ring is not drawn past the last scrollable pixel.) One screenful where there is room for one, an
-  ordinary scrolling page where there is not. The property that has to hold is
-  that the line is fully rendered and fully inside the viewport, which
-  `tests.html` asserts at both phone widths; a still page showing two thirds of
-  the line would have been the wrong trade. If this is ever revisited, the only
-  way to buy the pixels back is to take them off the ladder column, and at
-  320x568 there are 36px between it and its floor — enough, and it would leave
-  two rungs visible on a solved board.
+  law working.** Measured on the real board with the box open, day 037 cycle 3,
+  on the field as it has stood since cycle 2 — the status line's 0.82rem, with
+  8px of clearance under it so its focus ring is not drawn past the last
+  scrollable pixel: 390x844 and 1280x800 take the box inside the 64px
+  `.roomier` gives back and the document does not grow by a pixel; 360x640
+  grows 3px; 320x568 grows 17px; 667x375 and 844x390 grow 97px, the column
+  already sitting on its 4.8rem floor. Two readings this entry has carried were
+  wrong, and both are worth keeping: it read 37px at 320x568, which was true
+  until the fallback's message was corrected and stopped wrapping to a second
+  line there; and the day-037 correction of that then put 360x640 among the
+  viewports the box costs nothing, deleting the one true clause beside it —
+  "360x640 grows 3px" — while the commit message claimed all six viewports had
+  been re-measured. The numbers above are measurements, not assertions. What
+  `tests.html` asserts is the bound: that opening the box costs the page the
+  box and not the box plus the column's 64px loan, at 320x568, 360x640 and
+  390x844. Forcing the loan back on under the open box takes 320x568 to +81 and
+  360x640 to +67 and fails both rows, which is what the `!shareOpen` term in
+  `render()` is refusing. 360x640 is driven for the first time in cycle 3, and
+  the reason it is driven is that this entry quotes it: a figure nothing
+  measures is how the deleted clause survived. One screenful where there is
+  room for one, an ordinary scrolling page where there is not. The property
+  that has to hold is that the line is fully rendered and fully inside the
+  viewport, which `tests.html` asserts at all three of those widths; a still
+  page showing two thirds of the line would have been the wrong trade. If this
+  is ever revisited, the only way to buy the pixels back is to take them off
+  the ladder column, and at 320x568 there are 36px between it and its floor —
+  enough, and it would leave two rungs visible on a solved board.
 - **The win moment reflows.** Share arriving divides the button row three ways
   instead of two: at 390x844 Submit and Undo go 173px → 111.3px and `.controls`
   rises 32px, at the instant of the win. Left alone deliberately — the
