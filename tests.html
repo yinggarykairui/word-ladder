@@ -3006,6 +3006,10 @@
       .then(function () { return heightSweepAll(); })
       .then(function () { return shareCard(); })
       .then(function () { return shareLayout(320, 568); })
+      // 360x640 is quoted in PROJECT.md's growth entry, which is the reason it
+      // is driven: the entry says the page grows 3px there, and the entry that
+      // deleted that clause was wrong precisely because nothing measured it.
+      .then(function () { return shareLayout(360, 640); })
       .then(function () { return shareLayout(390, 844); })
       .then(function () { return shareInFlight(); })
       .then(function () { group("settle()'s guards, told apart"); return shareGuards(); })
